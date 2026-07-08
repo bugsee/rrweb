@@ -1,0 +1,30 @@
+{
+  "name": "@bugsee/rrweb-record",
+  "version": "2.1.0",
+  "description": "Prebuilt, record-only rrweb bundle (Bugsee hardened) for consumption by @bugsee/rrweb via a git dependency. Built from the bugsee-port branch; replay player tree-shaken out.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./record.js",
+  "module": "./record.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./record.js",
+      "default": "./record.js"
+    }
+  },
+  "files": [
+    "record.js",
+    "index.d.ts",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@rrweb/types": "^2.1.0",
+    "rrweb": "^2.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@rrweb/types": { "optional": true },
+    "rrweb": { "optional": true }
+  }
+}
