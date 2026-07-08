@@ -174,8 +174,13 @@ export default class MutationBuffer {
   private mutationCb: observerParam['mutationCb'];
   private blockClass: observerParam['blockClass'];
   private blockSelector: observerParam['blockSelector'];
+  private unblockSelector: observerParam['unblockSelector'];
+  private unmaskInputSelector: observerParam['unmaskInputSelector'];
   private maskTextClass: observerParam['maskTextClass'];
   private maskTextSelector: observerParam['maskTextSelector'];
+  private unmaskTextClass: observerParam['unmaskTextClass'];
+  private unmaskTextSelector: observerParam['unmaskTextSelector'];
+  private maskAllText: observerParam['maskAllText'];
   private inlineStylesheet: observerParam['inlineStylesheet'];
   private maskInputOptions: observerParam['maskInputOptions'];
   private maskTextFn: observerParam['maskTextFn'];
@@ -201,8 +206,13 @@ export default class MutationBuffer {
         'mutationCb',
         'blockClass',
         'blockSelector',
+        'unblockSelector',
+        'unmaskInputSelector',
         'maskTextClass',
         'maskTextSelector',
+        'unmaskTextClass',
+        'unmaskTextSelector',
+        'maskAllText',
         'inlineStylesheet',
         'maskInputOptions',
         'maskTextFn',
@@ -319,8 +329,13 @@ export default class MutationBuffer {
         mirror: this.mirror,
         blockClass: this.blockClass,
         blockSelector: this.blockSelector,
+        unblockSelector: this.unblockSelector,
         maskTextClass: this.maskTextClass,
         maskTextSelector: this.maskTextSelector,
+        unmaskTextClass: this.unmaskTextClass,
+        unmaskTextSelector: this.unmaskTextSelector,
+        maskAllText: this.maskAllText,
+        unmaskInputSelector: this.unmaskInputSelector,
         skipChild: true,
         newlyAddedElement: true,
         inlineStylesheet: this.inlineStylesheet,
@@ -568,7 +583,9 @@ export default class MutationBuffer {
                 m.target,
                 this.maskTextClass,
                 this.maskTextSelector,
-                true, // checkAncestors
+                this.unmaskTextClass,
+                this.unmaskTextSelector,
+                this.maskAllText,
               ) && value
                 ? this.maskTextFn
                   ? this.maskTextFn(value, closestElementOfNode(m.target))

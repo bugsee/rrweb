@@ -48,10 +48,15 @@ export type recordOptions<T> = {
   checkoutEveryNms?: number;
   blockClass?: blockClass;
   blockSelector?: string;
+  unblockSelector?: string | null;
+  unmaskInputSelector?: string | null;
   ignoreClass?: string;
   ignoreSelector?: string;
   maskTextClass?: maskTextClass;
   maskTextSelector?: string;
+  unmaskTextClass?: maskTextClass | null;
+  unmaskTextSelector?: string | null;
+  maskAllText?: boolean;
   maskAllInputs?: boolean;
   maskInputOptions?: MaskInputOptions;
   maskInputFn?: MaskInputFn;
@@ -97,10 +102,15 @@ export type observerParam = {
   selectionCb: selectionCallback;
   blockClass: blockClass;
   blockSelector: string | null;
+  unblockSelector: string | null;
+  unmaskInputSelector: string | null;
   ignoreClass: string;
   ignoreSelector: string | null;
   maskTextClass: maskTextClass;
   maskTextSelector: string | null;
+  unmaskTextClass: maskTextClass | null;
+  unmaskTextSelector: string | null;
+  maskAllText: boolean;
   maskInputOptions: MaskInputOptions;
   maskInputFn?: MaskInputFn;
   maskTextFn?: MaskTextFn;
@@ -144,8 +154,13 @@ export type MutationBufferParam = Pick<
   | 'mutationCb'
   | 'blockClass'
   | 'blockSelector'
+  | 'unblockSelector'
+  | 'unmaskInputSelector'
   | 'maskTextClass'
   | 'maskTextSelector'
+  | 'unmaskTextClass'
+  | 'unmaskTextSelector'
+  | 'maskAllText'
   | 'inlineStylesheet'
   | 'maskInputOptions'
   | 'maskTextFn'

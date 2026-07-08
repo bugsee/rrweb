@@ -226,8 +226,13 @@ export function _isBlockedElement(
   element: HTMLElement,
   blockClass: string | RegExp,
   blockSelector: string | null,
+  unblockSelector: string | null = null,
 ): boolean {
   try {
+    // Unblock wins: an element explicitly opted back in is never blocked.
+    if (unblockSelector && element.matches(unblockSelector)) {
+      return false;
+    }
     if (typeof blockClass === 'string') {
       if (element.classList.contains(blockClass)) {
         return true;
@@ -271,47 +276,117 @@ export function classMatchesRegex(
   return classMatchesRegex(dom.parentNode(node), regex, checkAncestors);
 }
 
+/** Does an element's own class list match a regex? (leaf check, no ancestor walk) */
+export function elementClassMatchesRegex(el: HTMLElement, regex: RegExp): boolean {
+  for (let eIndex = el.classList.length; eIndex--; ) {
+    if (regex.test(el.classList[eIndex])) return true;
+  }
+  return false;
+}
+
+/**
+ * Distance (in ancestor hops, 0 = the node itself) from `node` up to the nearest element matching
+ * `matchPredicate`, or -1 if none within `limit`. Used to resolve mask-vs-unmask by proximity.
+ */
+export function distanceToMatch(
+  node: Node | null,
+  matchPredicate: (node: Node) => boolean,
+  limit = Infinity,
+  distance = 0,
+): number {
+  if (!node) return -1;
+  if (node.nodeType !== node.ELEMENT_NODE) return -1;
+  if (distance > limit) return -1;
+  if (matchPredicate(node)) return distance;
+  return distanceToMatch(dom.parentNode(node), matchPredicate, limit, distance + 1);
+}
+
+/** Build a predicate that matches an element by class (string or regex) and/or a CSS selector. */
+export function createMatchPredicate(
+  className: string | RegExp | null,
+  selector: string | null,
+): (node: Node) => boolean {
+  return (node: Node) => {
+    const el = node as HTMLElement;
+    if (el === null) return false;
+    try {
+      if (className) {
+        if (typeof className === 'string') {
+          if (el.matches(`.${className}`)) return true;
+        } else if (elementClassMatchesRegex(el, className)) {
+          return true;
+        }
+      }
+      if (selector && el.matches(selector)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * Decide whether a node's text must be masked, resolving mask vs unmask by NEAREST ancestor (so a closer
+ * `unmask` ancestor overrides a farther `mask`, and vice-versa). With `maskAllText`, text is masked by
+ * default unless a nearer-or-equal unmask ancestor is found.
+ */
 export function needMaskingText(
   node: Node,
   maskTextClass: string | RegExp,
   maskTextSelector: string | null,
-  checkAncestors: boolean,
+  unmaskTextClass: string | RegExp | null,
+  unmaskTextSelector: string | null,
+  maskAllText: boolean,
 ): boolean {
-  let el: Element;
-  if (isElement(node)) {
-    el = node;
-    if (!dom.childNodes(el).length) {
-      // optimisation: we can avoid any of the below checks on leaf elements
-      // as masking is applied to child text nodes only
-      return false;
-    }
-  } else if (dom.parentElement(node) === null) {
-    // should warn? maybe a text node isn't attached to a parent node yet?
-    return false;
-  } else {
-    el = dom.parentElement(node)!;
-  }
   try {
-    if (typeof maskTextClass === 'string') {
-      if (checkAncestors) {
-        if (el.closest(`.${maskTextClass}`)) return true;
-      } else {
-        if (el.classList.contains(maskTextClass)) return true;
+    const el: HTMLElement | null =
+      node.nodeType === node.ELEMENT_NODE
+        ? (node as HTMLElement)
+        : dom.parentElement(node);
+    if (el === null) return false;
+
+    let maskDistance = -1;
+    let unmaskDistance = -1;
+
+    if (maskAllText) {
+      unmaskDistance = distanceToMatch(
+        el,
+        createMatchPredicate(unmaskTextClass, unmaskTextSelector),
+      );
+      if (unmaskDistance < 0) {
+        return true;
       }
+      maskDistance = distanceToMatch(
+        el,
+        createMatchPredicate(maskTextClass, maskTextSelector),
+        unmaskDistance,
+      );
     } else {
-      if (classMatchesRegex(el, maskTextClass, checkAncestors)) return true;
-    }
-    if (maskTextSelector) {
-      if (checkAncestors) {
-        if (el.closest(maskTextSelector)) return true;
-      } else {
-        if (el.matches(maskTextSelector)) return true;
+      maskDistance = distanceToMatch(
+        el,
+        createMatchPredicate(maskTextClass, maskTextSelector),
+      );
+      if (maskDistance < 0) {
+        return false;
       }
+      unmaskDistance = distanceToMatch(
+        el,
+        createMatchPredicate(unmaskTextClass, unmaskTextSelector),
+        maskDistance,
+      );
     }
+
+    return maskDistance >= 0
+      ? unmaskDistance >= 0
+        ? maskDistance <= unmaskDistance
+        : true
+      : unmaskDistance >= 0
+        ? false
+        : !!maskAllText;
   } catch (e) {
     //
   }
-  return false;
+  return !!maskAllText;
 }
 
 // https://stackoverflow.com/a/36155560
@@ -400,12 +475,14 @@ function serializeNode(
     mirror: Mirror;
     blockClass: string | RegExp;
     blockSelector: string | null;
+    unblockSelector?: string | null;
     needsMask: boolean;
     inlineStylesheet: boolean;
     maskInputOptions: MaskInputOptions;
     maskTextFn: MaskTextFn | undefined;
     maskInputFn: MaskInputFn | undefined;
     maskAttributeFn: MaskAttributeFn | undefined;
+    unmaskInputSelector?: string | null;
     dataURLOptions?: DataURLOptions;
     inlineImages: boolean;
     recordCanvas: boolean;
@@ -422,12 +499,14 @@ function serializeNode(
     mirror,
     blockClass,
     blockSelector,
+    unblockSelector = null,
     needsMask,
     inlineStylesheet,
     maskInputOptions = {},
     maskTextFn,
     maskInputFn,
     maskAttributeFn,
+    unmaskInputSelector = null,
     dataURLOptions = {},
     inlineImages,
     recordCanvas,
@@ -464,10 +543,12 @@ function serializeNode(
         doc,
         blockClass,
         blockSelector,
+        unblockSelector,
         inlineStylesheet,
         maskInputOptions,
         maskInputFn,
         maskAttributeFn,
+        unmaskInputSelector,
         dataURLOptions,
         inlineImages,
         recordCanvas,
@@ -555,10 +636,12 @@ function serializeElementNode(
     doc: Document;
     blockClass: string | RegExp;
     blockSelector: string | null;
+    unblockSelector?: string | null;
     inlineStylesheet: boolean;
     maskInputOptions: MaskInputOptions;
     maskInputFn: MaskInputFn | undefined;
     maskAttributeFn: MaskAttributeFn | undefined;
+    unmaskInputSelector?: string | null;
     dataURLOptions?: DataURLOptions;
     inlineImages: boolean;
     recordCanvas: boolean;
@@ -574,10 +657,12 @@ function serializeElementNode(
     doc,
     blockClass,
     blockSelector,
+    unblockSelector = null,
     inlineStylesheet,
     maskInputOptions = {},
     maskInputFn,
     maskAttributeFn,
+    unmaskInputSelector = null,
     dataURLOptions = {},
     inlineImages,
     recordCanvas,
@@ -585,7 +670,7 @@ function serializeElementNode(
     newlyAddedElement = false,
     rootId,
   } = options;
-  const needBlock = _isBlockedElement(n, blockClass, blockSelector);
+  const needBlock = _isBlockedElement(n, blockClass, blockSelector, unblockSelector);
   const tagName = getValidTagName(n);
   let attributes: attributes = {};
   const len = n.attributes.length;
@@ -640,14 +725,18 @@ function serializeElementNode(
       attributes.type !== 'button' &&
       value
     ) {
-      attributes.value = maskInputValue({
-        element: n,
-        type: getInputType(n),
-        tagName,
-        value,
-        maskInputOptions,
-        maskInputFn,
-      });
+      // An input matching `unmaskInputSelector` is explicitly opted out of value masking.
+      attributes.value =
+        unmaskInputSelector && n.matches(unmaskInputSelector)
+          ? value
+          : maskInputValue({
+              element: n,
+              type: getInputType(n),
+              tagName,
+              value,
+              maskInputOptions,
+              maskInputFn,
+            });
     } else if (checked) {
       attributes.checked = checked;
     }
@@ -943,13 +1032,17 @@ export function serializeNodeWithId(
     mirror: Mirror;
     blockClass: string | RegExp;
     blockSelector: string | null;
+    unblockSelector?: string | null;
+    unmaskInputSelector?: string | null;
     maskTextClass: string | RegExp;
     maskTextSelector: string | null;
+    unmaskTextClass?: string | RegExp | null;
+    unmaskTextSelector?: string | null;
+    maskAllText?: boolean;
     skipChild: boolean;
     inlineStylesheet: boolean;
     newlyAddedElement?: boolean;
     maskInputOptions?: MaskInputOptions;
-    needsMask?: boolean;
     maskTextFn: MaskTextFn | undefined;
     maskInputFn: MaskInputFn | undefined;
     maskAttributeFn: MaskAttributeFn | undefined;
@@ -978,8 +1071,13 @@ export function serializeNodeWithId(
     mirror,
     blockClass,
     blockSelector,
+    unblockSelector,
+    unmaskInputSelector,
     maskTextClass,
     maskTextSelector,
+    unmaskTextClass = null,
+    unmaskTextSelector = null,
+    maskAllText = false,
     skipChild = false,
     inlineStylesheet = true,
     maskInputOptions = {},
@@ -999,25 +1097,26 @@ export function serializeNodeWithId(
     newlyAddedElement = false,
     cssCaptured = false,
   } = options;
-  let { needsMask } = options;
   let { preserveWhiteSpace = true } = options;
 
-  if (!needsMask) {
-    // perf: if needsMask = true, children won't also need to check
-    const checkAncestors = needsMask === undefined; // if false, we've already checked ancestors
-    needsMask = needMaskingText(
-      n as Element,
-      maskTextClass,
-      maskTextSelector,
-      checkAncestors,
-    );
-  }
+  // Per-node mask decision (nearest mask-vs-unmask ancestor wins), so a `.unmask` subtree can opt out even
+  // under `maskAllText`. Evaluated per node rather than inherited so unmask overrides are honoured.
+  const needsMask = needMaskingText(
+    n,
+    maskTextClass,
+    maskTextSelector,
+    unmaskTextClass,
+    unmaskTextSelector,
+    maskAllText,
+  );
 
   const _serializedNode = serializeNode(n, {
     doc,
     mirror,
     blockClass,
     blockSelector,
+    unblockSelector,
+    unmaskInputSelector,
     needsMask,
     inlineStylesheet,
     maskInputOptions,
@@ -1090,9 +1189,13 @@ export function serializeNodeWithId(
       mirror,
       blockClass,
       blockSelector,
-      needsMask,
+      unblockSelector,
+      unmaskInputSelector,
       maskTextClass,
       maskTextSelector,
+      unmaskTextClass,
+      unmaskTextSelector,
+      maskAllText,
       skipChild,
       inlineStylesheet,
       maskInputOptions,
@@ -1167,9 +1270,13 @@ export function serializeNodeWithId(
             mirror,
             blockClass,
             blockSelector,
-            needsMask,
+            unblockSelector,
+            unmaskInputSelector,
             maskTextClass,
             maskTextSelector,
+            unmaskTextClass,
+            unmaskTextSelector,
+            maskAllText,
             skipChild: false,
             inlineStylesheet,
             maskInputOptions,
@@ -1220,9 +1327,13 @@ export function serializeNodeWithId(
             mirror,
             blockClass,
             blockSelector,
-            needsMask,
+            unblockSelector,
+            unmaskInputSelector,
             maskTextClass,
             maskTextSelector,
+            unmaskTextClass,
+            unmaskTextSelector,
+            maskAllText,
             skipChild: false,
             inlineStylesheet,
             maskInputOptions,
@@ -1263,8 +1374,13 @@ function snapshot(
     mirror?: Mirror;
     blockClass?: string | RegExp;
     blockSelector?: string | null;
+    unblockSelector?: string | null;
+    unmaskInputSelector?: string | null;
     maskTextClass?: string | RegExp;
     maskTextSelector?: string | null;
+    unmaskTextClass?: string | RegExp | null;
+    unmaskTextSelector?: string | null;
+    maskAllText?: boolean;
     inlineStylesheet?: boolean;
     maskAllInputs?: boolean | MaskInputOptions;
     maskTextFn?: MaskTextFn;
@@ -1293,8 +1409,13 @@ function snapshot(
     mirror = new Mirror(),
     blockClass = 'rr-block',
     blockSelector = null,
+    unblockSelector = null,
+    unmaskInputSelector = null,
     maskTextClass = 'rr-mask',
     maskTextSelector = null,
+    unmaskTextClass = null,
+    unmaskTextSelector = null,
+    maskAllText = false,
     inlineStylesheet = true,
     inlineImages = false,
     recordCanvas = false,
@@ -1344,8 +1465,13 @@ function snapshot(
     mirror,
     blockClass,
     blockSelector,
+    unblockSelector,
+    unmaskInputSelector,
     maskTextClass,
     maskTextSelector,
+    unmaskTextClass,
+    unmaskTextSelector,
+    maskAllText,
     skipChild: false,
     inlineStylesheet,
     maskInputOptions,

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import snapshot, {
   _isBlockedElement,
+  needMaskingText,
   serializeNodeWithId,
   transformAttribute,
 } from '../src/snapshot';
@@ -159,6 +160,23 @@ describe('isBlockedElement()', () => {
       subject('<div data-rr-block />', { blockSelector: '[data-rr-block]' }),
     ).toEqual(true);
   });
+
+  it('unblock wins: an element matching unblockSelector is not blocked (overrides block class)', () => {
+    expect(
+      _isBlockedElement(
+        render('<div class="rr-block bugsee-show" />'),
+        'rr-block',
+        null,
+        '.bugsee-show',
+      ),
+    ).toBe(false);
+  });
+
+  it('still blocks when unblockSelector does not match', () => {
+    expect(
+      _isBlockedElement(render('<div class="rr-block" />'), 'rr-block', null, '.bugsee-show'),
+    ).toBe(true);
+  });
 });
 
 describe('style elements', () => {
@@ -259,6 +277,70 @@ describe('jsdom snapshot', () => {
     expect(sn).toMatchObject({
       type: 0,
     });
+  });
+});
+
+describe('needMaskingText — maskAllText + selective unmask (nearest-ancestor-wins)', () => {
+  // Build a DOM tree and return the deepest leaf element, so we can test the mask/unmask decision
+  // from the perspective of a text node's containing element.
+  function leaf(html: string): HTMLElement {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    document.body.appendChild(root);
+    let el: Element = root;
+    while (el.firstElementChild) el = el.firstElementChild;
+    return el as HTMLElement;
+  }
+  const call = (
+    el: Node,
+    opts: {
+      maskClass?: string;
+      maskSel?: string | null;
+      unmaskClass?: string | null;
+      unmaskSel?: string | null;
+      maskAll?: boolean;
+    } = {},
+  ) =>
+    needMaskingText(
+      el,
+      opts.maskClass ?? 'rr-mask',
+      opts.maskSel ?? null,
+      opts.unmaskClass ?? null,
+      opts.unmaskSel ?? null,
+      opts.maskAll ?? false,
+    );
+
+  it('maskAllText=true masks a plain element with no unmask ancestor', () => {
+    expect(call(leaf('<p>hi</p>'), { maskAll: true })).toBe(true);
+  });
+
+  it('maskAllText=true is overridden by an unmask ancestor (selector)', () => {
+    expect(
+      call(leaf('<div class="ok"><p>hi</p></div>'), { maskAll: true, unmaskSel: '.ok' }),
+    ).toBe(false);
+  });
+
+  it('maskAllText=false does NOT mask when nothing matches', () => {
+    expect(call(leaf('<p>hi</p>'), { maskAll: false })).toBe(false);
+  });
+
+  it('maskAllText=false masks when a mask selector matches', () => {
+    expect(call(leaf('<div class="secret"><p>hi</p></div>'), { maskSel: '.secret' })).toBe(true);
+  });
+
+  it('nearest ancestor wins: mask nearer than unmask → masked', () => {
+    // unmask is the outer ancestor, mask is nearer → masked
+    const el = leaf('<div class="unmask"><div class="mask"><p>hi</p></div></div>');
+    expect(call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true })).toBe(true);
+  });
+
+  it('nearest ancestor wins: unmask nearer than mask → unmasked', () => {
+    const el = leaf('<div class="mask"><div class="unmask"><p>hi</p></div></div>');
+    expect(call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true })).toBe(false);
+  });
+
+  it('honours a mask class (not just selector)', () => {
+    expect(call(leaf('<div class="rr-mask"><p>hi</p></div>'), { maskClass: 'rr-mask' })).toBe(true);
   });
 });
 
