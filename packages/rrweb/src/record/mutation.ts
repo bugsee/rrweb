@@ -180,6 +180,7 @@ export default class MutationBuffer {
   private maskInputOptions: observerParam['maskInputOptions'];
   private maskTextFn: observerParam['maskTextFn'];
   private maskInputFn: observerParam['maskInputFn'];
+  private maskAttributeFn: observerParam['maskAttributeFn'];
   private keepIframeSrcFn: observerParam['keepIframeSrcFn'];
   private recordCanvas: observerParam['recordCanvas'];
   private inlineImages: observerParam['inlineImages'];
@@ -206,6 +207,7 @@ export default class MutationBuffer {
         'maskInputOptions',
         'maskTextFn',
         'maskInputFn',
+        'maskAttributeFn',
         'keepIframeSrcFn',
         'recordCanvas',
         'inlineImages',
@@ -325,6 +327,7 @@ export default class MutationBuffer {
         maskInputOptions: this.maskInputOptions,
         maskTextFn: this.maskTextFn,
         maskInputFn: this.maskInputFn,
+        maskAttributeFn: this.maskAttributeFn,
         slimDOMOptions: this.slimDOMOptions,
         dataURLOptions: this.dataURLOptions,
         recordCanvas: this.recordCanvas,
@@ -642,6 +645,8 @@ export default class MutationBuffer {
             toLowerCase(target.tagName),
             toLowerCase(attributeName),
             value,
+            target,
+            this.maskAttributeFn,
           );
           if (attributeName === 'style') {
             if (!this.unattachedDoc) {

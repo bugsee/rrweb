@@ -7,6 +7,8 @@ import {
   extractFileExtension,
   fixSafariColons,
   isNodeMetaEqual,
+  maskInputValue,
+  shouldMaskInput,
   stringifyStylesheet,
 } from '../src/utils';
 import { NodeType } from '@rrweb/types';
@@ -324,6 +326,144 @@ describe('utils', () => {
       ).toEqual(
         "@font-face { font-family: 'MockFont'; src: url('https://example.com/fonts/mockfont.woff2') format('woff2'); font-weight: normal; font-style: normal; }",
       );
+    });
+  });
+
+  // Privacy hard-floor: sensitive inputs are masked even when global input-masking is off, plus
+  // OPTION→SELECT and untyped-input→text.
+  describe('maskInputValue — sensitive-input hard-floor', () => {
+    const el = () => document.createElement('input') as HTMLElement;
+
+    it('ALWAYS masks type=password even when maskInputOptions is empty (global masking off)', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'password',
+          value: 'hunter2',
+        }),
+      ).toBe('*******');
+    });
+
+    it('masks password regardless of casing of the type attribute', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'PASSWORD',
+          value: 'abcd',
+        }),
+      ).toBe('****');
+    });
+
+    it('masks an OPTION using the SELECT masking option', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: { select: true },
+          tagName: 'OPTION',
+          type: null,
+          value: 'Male',
+        }),
+      ).toBe('****');
+    });
+
+    it('treats an untyped <input> as text (masks when the text option is on)', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: { text: true },
+          tagName: 'INPUT',
+          type: null,
+          value: 'hello',
+        }),
+      ).toBe('*****');
+    });
+
+    it('does NOT mask a non-sensitive input when no option applies (fail-open path preserved)', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'text',
+          value: 'hello',
+        }),
+      ).toBe('hello');
+    });
+
+    it('still honours an explicit maskInputOptions match (regression)', () => {
+      expect(
+        maskInputValue({
+          element: el(),
+          maskInputOptions: { text: true },
+          tagName: 'INPUT',
+          type: 'text',
+          value: 'hello',
+        }),
+      ).toBe('*****');
+    });
+  });
+
+  // Privacy hard-floor: inputs whose `autocomplete` marks them as credit-card / password /
+  // one-time-code fields are always masked, no matter the type or the configured options.
+  describe('maskInputValue — sensitive autocomplete hard-mask', () => {
+    const withAutocomplete = (value: string): HTMLElement => {
+      const input = document.createElement('input');
+      input.setAttribute('autocomplete', value);
+      return input;
+    };
+
+    it.each([
+      'cc-number',
+      'cc-exp',
+      'cc-exp-month',
+      'cc-exp-year',
+      'cc-csc',
+      'current-password',
+      'new-password',
+      'one-time-code',
+    ])('masks a text input with autocomplete="%s"', (autocomplete) => {
+      expect(
+        maskInputValue({
+          element: withAutocomplete(autocomplete),
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'text',
+          value: '4242',
+        }),
+      ).toBe('****');
+    });
+
+    it('is case-insensitive on the autocomplete value', () => {
+      expect(
+        shouldMaskInput({
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'text',
+          element: withAutocomplete('CC-Number'),
+        }),
+      ).toBe(true);
+    });
+
+    it('does NOT mask a non-sensitive autocomplete (e.g. name)', () => {
+      expect(
+        maskInputValue({
+          element: withAutocomplete('name'),
+          maskInputOptions: {},
+          tagName: 'INPUT',
+          type: 'text',
+          value: 'Ada',
+        }),
+      ).toBe('Ada');
+    });
+
+    it('still masks when no element is provided but options apply (regression)', () => {
+      expect(
+        shouldMaskInput({ maskInputOptions: { text: true }, tagName: 'INPUT', type: 'text' }),
+      ).toBe(true);
     });
   });
 });

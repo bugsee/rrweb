@@ -3,6 +3,7 @@ import type {
   SlimDOMOptions,
   MaskTextFn,
   MaskInputFn,
+  MaskAttributeFn,
   KeepIframeSrcFn,
   ICanvas,
   DialogAttributes,
@@ -175,6 +176,8 @@ export function transformAttribute(
   tagName: Lowercase<string>,
   name: Lowercase<string>,
   value: string | null,
+  element: HTMLElement,
+  maskAttributeFn: MaskAttributeFn | undefined,
 ): string | null {
   if (!value) {
     return value;
@@ -198,6 +201,13 @@ export function transformAttribute(
     return absolutifyURLs(value, getHref(doc));
   } else if (tagName === 'object' && name === 'data') {
     return absoluteToDoc(doc, value);
+  }
+
+  // Custom attribute masking: lets a caller redact attribute values that can leak user content
+  // (e.g. placeholder / title / aria-label / value). Applied after the URL/style transforms above so
+  // links and stylesheets remain resolvable.
+  if (typeof maskAttributeFn === 'function') {
+    return maskAttributeFn(name, value, element);
   }
 
   return value;
@@ -395,6 +405,7 @@ function serializeNode(
     maskInputOptions: MaskInputOptions;
     maskTextFn: MaskTextFn | undefined;
     maskInputFn: MaskInputFn | undefined;
+    maskAttributeFn: MaskAttributeFn | undefined;
     dataURLOptions?: DataURLOptions;
     inlineImages: boolean;
     recordCanvas: boolean;
@@ -416,6 +427,7 @@ function serializeNode(
     maskInputOptions = {},
     maskTextFn,
     maskInputFn,
+    maskAttributeFn,
     dataURLOptions = {},
     inlineImages,
     recordCanvas,
@@ -455,6 +467,7 @@ function serializeNode(
         inlineStylesheet,
         maskInputOptions,
         maskInputFn,
+        maskAttributeFn,
         dataURLOptions,
         inlineImages,
         recordCanvas,
@@ -545,6 +558,7 @@ function serializeElementNode(
     inlineStylesheet: boolean;
     maskInputOptions: MaskInputOptions;
     maskInputFn: MaskInputFn | undefined;
+    maskAttributeFn: MaskAttributeFn | undefined;
     dataURLOptions?: DataURLOptions;
     inlineImages: boolean;
     recordCanvas: boolean;
@@ -563,6 +577,7 @@ function serializeElementNode(
     inlineStylesheet,
     maskInputOptions = {},
     maskInputFn,
+    maskAttributeFn,
     dataURLOptions = {},
     inlineImages,
     recordCanvas,
@@ -582,6 +597,8 @@ function serializeElementNode(
         tagName,
         toLowerCase(attr.name),
         attr.value,
+        n,
+        maskAttributeFn,
       );
     }
   }
@@ -935,6 +952,7 @@ export function serializeNodeWithId(
     needsMask?: boolean;
     maskTextFn: MaskTextFn | undefined;
     maskInputFn: MaskInputFn | undefined;
+    maskAttributeFn: MaskAttributeFn | undefined;
     slimDOMOptions: SlimDOMOptions;
     dataURLOptions?: DataURLOptions;
     keepIframeSrcFn?: KeepIframeSrcFn;
@@ -967,6 +985,7 @@ export function serializeNodeWithId(
     maskInputOptions = {},
     maskTextFn,
     maskInputFn,
+    maskAttributeFn,
     slimDOMOptions,
     dataURLOptions = {},
     inlineImages = false,
@@ -1004,6 +1023,7 @@ export function serializeNodeWithId(
     maskInputOptions,
     maskTextFn,
     maskInputFn,
+    maskAttributeFn,
     dataURLOptions,
     inlineImages,
     recordCanvas,
@@ -1078,6 +1098,7 @@ export function serializeNodeWithId(
       maskInputOptions,
       maskTextFn,
       maskInputFn,
+      maskAttributeFn,
       slimDOMOptions,
       dataURLOptions,
       inlineImages,
@@ -1154,6 +1175,7 @@ export function serializeNodeWithId(
             maskInputOptions,
             maskTextFn,
             maskInputFn,
+            maskAttributeFn,
             slimDOMOptions,
             dataURLOptions,
             inlineImages,
@@ -1206,6 +1228,7 @@ export function serializeNodeWithId(
             maskInputOptions,
             maskTextFn,
             maskInputFn,
+            maskAttributeFn,
             slimDOMOptions,
             dataURLOptions,
             inlineImages,
@@ -1246,6 +1269,7 @@ function snapshot(
     maskAllInputs?: boolean | MaskInputOptions;
     maskTextFn?: MaskTextFn;
     maskInputFn?: MaskInputFn;
+    maskAttributeFn?: MaskAttributeFn;
     slimDOM?: 'all' | boolean | SlimDOMOptions;
     dataURLOptions?: DataURLOptions;
     inlineImages?: boolean;
@@ -1277,6 +1301,7 @@ function snapshot(
     maskAllInputs = false,
     maskTextFn,
     maskInputFn,
+    maskAttributeFn,
     slimDOM = false,
     dataURLOptions,
     preserveWhiteSpace,
@@ -1326,6 +1351,7 @@ function snapshot(
     maskInputOptions,
     maskTextFn,
     maskInputFn,
+    maskAttributeFn,
     slimDOMOptions,
     dataURLOptions,
     inlineImages,

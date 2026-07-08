@@ -7,8 +7,10 @@ import { describe, expect, it } from 'vitest';
 import snapshot, {
   _isBlockedElement,
   serializeNodeWithId,
+  transformAttribute,
 } from '../src/snapshot';
 import { elementNode, serializedNodeWithId } from '../src/types';
+import type { serializedElementNodeWithId } from '@rrweb/types';
 import { Mirror, absolutifyURLs } from '../src/utils';
 
 const serializeNode = (node: Node): serializedNodeWithId | null => {
@@ -257,5 +259,72 @@ describe('jsdom snapshot', () => {
     expect(sn).toMatchObject({
       type: 0,
     });
+  });
+});
+
+describe('attribute-value masking', () => {
+  const asterisk = (_name: string, value: string) => '*'.repeat(value.length);
+
+  describe('transformAttribute', () => {
+    it('applies maskAttributeFn to a plain attribute value', () => {
+      const el = document.createElement('input');
+      expect(
+        transformAttribute(document, 'input', 'placeholder', 'you@host.com', el, asterisk),
+      ).toBe('************');
+    });
+
+    it('passes (name, value, element) through to maskAttributeFn', () => {
+      const el = document.createElement('div');
+      const seen: Array<[string, string, Element]> = [];
+      transformAttribute(
+        document,
+        'div',
+        'title',
+        'secret',
+        el,
+        (name, value, element) => {
+          seen.push([name, value, element]);
+          return 'X';
+        },
+      );
+      expect(seen).toEqual([['title', 'secret', el]]);
+    });
+
+    it('does NOT mask URL/style attributes — the special-cases take precedence', () => {
+      const el = document.createElement('img');
+      // src is absolutified, never handed to maskAttributeFn
+      expect(
+        transformAttribute(document, 'img', 'src', '/a/b.png', el, asterisk),
+      ).not.toContain('*');
+    });
+
+    it('leaves the value unchanged when no maskAttributeFn is given (regression)', () => {
+      const el = document.createElement('div');
+      expect(
+        transformAttribute(document, 'div', 'title', 'hello', el, undefined),
+      ).toBe('hello');
+    });
+  });
+
+  it('threads maskAttributeFn through serializeNodeWithId → serialized attributes are masked', () => {
+    const el = document.createElement('input');
+    el.setAttribute('placeholder', 'you@host.com');
+    el.setAttribute('aria-label', 'Email address');
+    const sn = serializeNodeWithId(el, {
+      doc: document,
+      mirror: new Mirror(),
+      blockClass: 'blockblock',
+      blockSelector: null,
+      maskTextClass: 'maskmask',
+      maskTextSelector: null,
+      skipChild: false,
+      inlineStylesheet: true,
+      maskTextFn: undefined,
+      maskInputFn: undefined,
+      maskAttributeFn: asterisk,
+      slimDOMOptions: {},
+    }) as serializedElementNodeWithId;
+    expect(sn.attributes.placeholder).toBe('************');
+    expect(sn.attributes['aria-label']).toBe('*************');
   });
 });

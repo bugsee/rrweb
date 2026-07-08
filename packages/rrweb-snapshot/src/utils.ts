@@ -259,6 +259,56 @@ export function createMirror(): Mirror {
   return new Mirror();
 }
 
+/**
+ * `autocomplete` values that mark an input as carrying credit-card, password or one-time-code
+ * data. Such fields are always masked, regardless of type or the configured options.
+ */
+const SENSITIVE_AUTOCOMPLETE = new Set([
+  'current-password',
+  'new-password',
+  'cc-number',
+  'cc-exp',
+  'cc-exp-month',
+  'cc-exp-year',
+  'cc-csc',
+  'one-time-code',
+]);
+
+/**
+ * Decide whether an input's value must be masked. Adds a privacy hard-floor on top of the
+ * `maskInputOptions` lookup so sensitive inputs are masked even when global input-masking is off:
+ *  - `type=password` is ALWAYS masked (never unmaskable);
+ *  - an input whose `autocomplete` marks it as a credit-card / password / OTP field is always masked;
+ *  - an `<option>` is masked according to its `<select>` option;
+ *  - an `<input>` with no `type` defaults to the `text` option.
+ */
+export function shouldMaskInput({
+  maskInputOptions,
+  tagName,
+  type,
+  element,
+}: {
+  maskInputOptions: MaskInputOptions;
+  tagName: string;
+  type: string | null;
+  element?: HTMLElement;
+}): boolean {
+  // An <option>'s masking follows its containing <select>.
+  const effectiveTag = tagName.toUpperCase() === 'OPTION' ? 'SELECT' : tagName.toUpperCase();
+  const actualType = type && toLowerCase(type);
+  const autocomplete = element?.getAttribute('autocomplete');
+  return Boolean(
+    maskInputOptions[effectiveTag.toLowerCase() as keyof MaskInputOptions] ||
+      (actualType && maskInputOptions[actualType as keyof MaskInputOptions]) ||
+      // Hard-floor: passwords are always masked, regardless of the configured options.
+      actualType === 'password' ||
+      // Hard-floor: credit-card / password / one-time-code autocomplete fields are always masked.
+      (autocomplete && SENSITIVE_AUTOCOMPLETE.has(toLowerCase(autocomplete))) ||
+      // Inputs without an explicit type behave like `type="text"`.
+      (effectiveTag === 'INPUT' && !actualType && maskInputOptions['text']),
+  );
+}
+
 export function maskInputValue({
   element,
   maskInputOptions,
@@ -275,12 +325,8 @@ export function maskInputValue({
   maskInputFn?: MaskInputFn;
 }): string {
   let text = value || '';
-  const actualType = type && toLowerCase(type);
 
-  if (
-    maskInputOptions[tagName.toLowerCase() as keyof MaskInputOptions] ||
-    (actualType && maskInputOptions[actualType as keyof MaskInputOptions])
-  ) {
+  if (shouldMaskInput({ maskInputOptions, tagName, type, element })) {
     if (maskInputFn) {
       text = maskInputFn(text, element);
     } else {
