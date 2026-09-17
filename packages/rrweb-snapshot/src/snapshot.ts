@@ -23,7 +23,7 @@ import {
   is2DCanvasBlank,
   isElement,
   isShadowRoot,
-  maskInputValue,
+  resolveInputValue,
   isNativeShadowDom,
   stringifyStylesheet,
   getInputType,
@@ -725,18 +725,16 @@ function serializeElementNode(
       attributes.type !== 'button' &&
       value
     ) {
-      // An input matching `unmaskInputSelector` is explicitly opted out of value masking.
-      attributes.value =
-        unmaskInputSelector && n.matches(unmaskInputSelector)
-          ? value
-          : maskInputValue({
-              element: n,
-              type: getInputType(n),
-              tagName,
-              value,
-              maskInputOptions,
-              maskInputFn,
-            });
+      // `unmaskInputSelector` opts an input out of value masking — never a sensitive one (resolveInputValue).
+      attributes.value = resolveInputValue({
+        element: n,
+        type: getInputType(n),
+        tagName,
+        value,
+        maskInputOptions,
+        maskInputFn,
+        unmaskInputSelector,
+      });
     } else if (checked) {
       attributes.checked = checked;
     }

@@ -280,6 +280,43 @@ describe('jsdom snapshot', () => {
   });
 });
 
+describe('input values in a snapshot — unmaskInputSelector', () => {
+  const valueOf = (html: string, unmaskInputSelector: string | null) => {
+    document.write(`<!DOCTYPE html><body>${html}</body>`);
+    const el = document.getElementById('f') as HTMLInputElement;
+    el.value = 'secret';
+    const sn = serializeNodeWithId(el, {
+      doc: document,
+      mirror: new Mirror(),
+      blockClass: 'rr-block',
+      blockSelector: null,
+      unmaskInputSelector,
+      maskTextClass: 'rr-mask',
+      maskTextSelector: null,
+      skipChild: false,
+      inlineStylesheet: true,
+      maskInputOptions: { text: true, password: true },
+      maskTextFn: undefined,
+      maskInputFn: undefined,
+      maskAttributeFn: undefined,
+      slimDOMOptions: {},
+    }) as { attributes: Record<string, unknown> };
+    return sn.attributes.value;
+  };
+
+  it('keeps the real value of an unmasked input', () => {
+    expect(valueOf('<input id="f" type="text" class="bugsee-unmask">', '.bugsee-unmask')).toBe('secret');
+  });
+
+  it('masks an input that is not unmasked', () => {
+    expect(valueOf('<input id="f" type="text">', '.bugsee-unmask')).toBe('******');
+  });
+
+  it('never un-masks a password field, even when it matches the unmask selector', () => {
+    expect(valueOf('<input id="f" type="password" class="bugsee-unmask">', '.bugsee-unmask')).toBe('******');
+  });
+});
+
 describe('needMaskingText — maskAllText + selective unmask (nearest-ancestor-wins)', () => {
   // Build a DOM tree and return the deepest leaf element, so we can test the mask/unmask decision
   // from the perspective of a text node's containing element.

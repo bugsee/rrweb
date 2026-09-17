@@ -1,6 +1,5 @@
 import {
-  type MaskInputOptions,
-  maskInputValue,
+  resolveInputValue,
   Mirror,
   getInputType,
   toLowerCase,
@@ -389,6 +388,7 @@ function initInputObserver({
   ignoreSelector,
   maskInputOptions,
   maskInputFn,
+  unmaskInputSelector,
   sampling,
   userTriggeredOnInput,
 }: observerParam): listenerHandler {
@@ -425,17 +425,18 @@ function initInputObserver({
 
     if (type === 'radio' || type === 'checkbox') {
       isChecked = (target as HTMLInputElement).checked;
-    } else if (
-      maskInputOptions[tagName.toLowerCase() as keyof MaskInputOptions] ||
-      maskInputOptions[type as keyof MaskInputOptions]
-    ) {
-      text = maskInputValue({
+    } else {
+      // The same resolution as the full snapshot (rrweb-snapshot `resolveInputValue`): an input matching
+      // `unmaskInputSelector` records what the user typed, a sensitive one never does. This path used to
+      // ignore the unmask selector, so a value typed while recording stayed masked.
+      text = resolveInputValue({
         element: target,
         maskInputOptions,
         tagName,
         type,
         value: text,
         maskInputFn,
+        unmaskInputSelector,
       });
     }
     cbWithDedup(

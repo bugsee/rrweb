@@ -8,6 +8,7 @@ import {
   fixSafariColons,
   isNodeMetaEqual,
   maskInputValue,
+  resolveInputValue,
   shouldMaskInput,
   stringifyStylesheet,
 } from '../src/utils';
@@ -466,4 +467,61 @@ describe('utils', () => {
       ).toBe(true);
     });
   });
+
+  // ONE resolution for an input's value, used by every recording path — the full snapshot, the live
+  // input observer and both mutation paths. The fork's `unmaskInputSelector` used to be honoured by the
+  // snapshot alone, so a value typed while recording stayed masked; and there it short-circuited the
+  // whole masking call, so an unmask mark on a password field would have exposed it.
+  describe('resolveInputValue()', () => {
+    const input = (attrs: Record<string, string>): HTMLInputElement => {
+      const el = document.createElement('input');
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      return el;
+    };
+    const resolve = (
+      el: HTMLInputElement,
+      opts: { maskAll?: boolean; unmask?: string | null } = {},
+    ) =>
+      resolveInputValue({
+        element: el,
+        maskInputOptions: opts.maskAll ? { text: true, password: true } : { password: true },
+        tagName: el.tagName,
+        type: el.getAttribute('type'),
+        value: 'secret',
+        maskInputFn: undefined,
+        unmaskInputSelector: opts.unmask ?? null,
+      });
+
+    it('keeps the real value of an input matching unmaskInputSelector', () => {
+      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true, unmask: '.bugsee-unmask' })).toBe('secret');
+    });
+
+    it('masks an input that does not match', () => {
+      expect(resolve(input({ type: 'text' }), { maskAll: true, unmask: '.bugsee-unmask' })).toBe('******');
+    });
+
+    it('masks as before when no unmask selector is given', () => {
+      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true })).toBe('******');
+    });
+
+    it('leaves an unmasked-by-options input alone, with or without a selector', () => {
+      expect(resolve(input({ type: 'text' }))).toBe('secret');
+      expect(resolve(input({ type: 'text', class: 'x' }), { unmask: '.bugsee-unmask' })).toBe('secret');
+    });
+
+    it.each([
+      ['a password field', { type: 'password' }],
+      ['a credit-card autocomplete field', { type: 'text', autocomplete: 'cc-number' }],
+      ['a one-time-code autocomplete field', { type: 'text', autocomplete: 'one-time-code' }],
+    ])('never un-masks %s, even when it matches the unmask selector', (_label, attrs) => {
+      const el = input({ ...attrs, class: 'bugsee-unmask' });
+      expect(resolve(el, { maskAll: true, unmask: '.bugsee-unmask' })).toBe('******');
+      expect(resolve(el, { maskAll: false, unmask: '.bugsee-unmask' })).toBe('******');
+    });
+
+    it('fails closed when the unmask selector is invalid', () => {
+      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true, unmask: '[[bad' })).toBe('******');
+    });
+  });
 });
+

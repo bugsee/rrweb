@@ -336,6 +336,57 @@ export function maskInputValue({
   return text;
 }
 
+/**
+ * Is this input sensitive by the hard floor — a password, or an `autocomplete` that marks a credit card,
+ * password or one-time code? Such a value is masked no matter what any option or unmask mark says.
+ */
+function isSensitiveInput(element: HTMLElement, type: string | null): boolean {
+  if (type && toLowerCase(type) === 'password') return true;
+  const autocomplete = element.getAttribute('autocomplete');
+  return Boolean(autocomplete && SENSITIVE_AUTOCOMPLETE.has(toLowerCase(autocomplete)));
+}
+
+/**
+ * The ONE resolution of an input's recorded value, shared by every recording path: the full snapshot, the
+ * live input observer and the mutation observer's value paths.
+ *
+ * An input matching `unmaskInputSelector` keeps its real value — EXCEPT a sensitive input, which the hard
+ * floor masks first, so an unmask mark on a password or card field can never expose it. A selector that
+ * throws counts as no match: masked, never leaked. Otherwise the value is masked exactly as
+ * `maskInputValue` decides.
+ *
+ * Before this, the snapshot alone honoured the unmask selector (a value typed while recording stayed
+ * masked) and there it short-circuited the whole masking call, hard floor included.
+ */
+export function resolveInputValue({
+  element,
+  maskInputOptions,
+  tagName,
+  type,
+  value,
+  maskInputFn,
+  unmaskInputSelector,
+}: {
+  element: HTMLElement;
+  maskInputOptions: MaskInputOptions;
+  tagName: string;
+  type: string | null;
+  value: string | null;
+  maskInputFn?: MaskInputFn;
+  unmaskInputSelector?: string | null;
+}): string {
+  if (unmaskInputSelector && !isSensitiveInput(element, type)) {
+    let unmasked = false;
+    try {
+      unmasked = element.matches(unmaskInputSelector);
+    } catch {
+      unmasked = false;
+    }
+    if (unmasked) return value || '';
+  }
+  return maskInputValue({ element, maskInputOptions, tagName, type, value, maskInputFn });
+}
+
 export function toLowerCase<T extends string>(str: T): Lowercase<T> {
   return str.toLowerCase() as unknown as Lowercase<T>;
 }
