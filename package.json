@@ -1,6 +1,6 @@
 {
   "name": "@bugsee/rrweb-record",
-  "version": "2.1.0",
+  "version": "2.1.7",
   "description": "Prebuilt, record-only rrweb bundle (Bugsee hardened) for consumption by @bugsee/rrweb via a git dependency. Built from the bugsee-port branch; replay player tree-shaken out.",
   "license": "MIT",
   "type": "module",
