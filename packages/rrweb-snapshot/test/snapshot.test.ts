@@ -175,7 +175,12 @@ describe('isBlockedElement()', () => {
 
   it('still blocks when unblockSelector does not match', () => {
     expect(
-      _isBlockedElement(render('<div class="rr-block" />'), 'rr-block', null, '.bugsee-show'),
+      _isBlockedElement(
+        render('<div class="rr-block" />'),
+        'rr-block',
+        null,
+        '.bugsee-show',
+      ),
     ).toBe(true);
   });
 });
@@ -323,15 +328,27 @@ describe('input values in a snapshot — unmaskInputSelector', () => {
   };
 
   it('keeps the real value of an unmasked input', () => {
-    expect(valueOf('<input id="f" type="text" class="bugsee-unmask">', '.bugsee-unmask')).toBe('secret');
+    expect(
+      valueOf(
+        '<input id="f" type="text" class="bugsee-unmask">',
+        '.bugsee-unmask',
+      ),
+    ).toBe('secret');
   });
 
   it('masks an input that is not unmasked', () => {
-    expect(valueOf('<input id="f" type="text">', '.bugsee-unmask')).toBe('******');
+    expect(valueOf('<input id="f" type="text">', '.bugsee-unmask')).toBe(
+      '******',
+    );
   });
 
   it('never un-masks a password field, even when it matches the unmask selector', () => {
-    expect(valueOf('<input id="f" type="password" class="bugsee-unmask">', '.bugsee-unmask')).toBe('******');
+    expect(
+      valueOf(
+        '<input id="f" type="password" class="bugsee-unmask">',
+        '.bugsee-unmask',
+      ),
+    ).toBe('******');
   });
 });
 
@@ -371,7 +388,10 @@ describe('needMaskingText — maskAllText + selective unmask (nearest-ancestor-w
 
   it('maskAllText=true is overridden by an unmask ancestor (selector)', () => {
     expect(
-      call(leaf('<div class="ok"><p>hi</p></div>'), { maskAll: true, unmaskSel: '.ok' }),
+      call(leaf('<div class="ok"><p>hi</p></div>'), {
+        maskAll: true,
+        unmaskSel: '.ok',
+      }),
     ).toBe(false);
   });
 
@@ -380,22 +400,36 @@ describe('needMaskingText — maskAllText + selective unmask (nearest-ancestor-w
   });
 
   it('maskAllText=false masks when a mask selector matches', () => {
-    expect(call(leaf('<div class="secret"><p>hi</p></div>'), { maskSel: '.secret' })).toBe(true);
+    expect(
+      call(leaf('<div class="secret"><p>hi</p></div>'), { maskSel: '.secret' }),
+    ).toBe(true);
   });
 
   it('nearest ancestor wins: mask nearer than unmask → masked', () => {
     // unmask is the outer ancestor, mask is nearer → masked
-    const el = leaf('<div class="unmask"><div class="mask"><p>hi</p></div></div>');
-    expect(call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true })).toBe(true);
+    const el = leaf(
+      '<div class="unmask"><div class="mask"><p>hi</p></div></div>',
+    );
+    expect(
+      call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true }),
+    ).toBe(true);
   });
 
   it('nearest ancestor wins: unmask nearer than mask → unmasked', () => {
-    const el = leaf('<div class="mask"><div class="unmask"><p>hi</p></div></div>');
-    expect(call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true })).toBe(false);
+    const el = leaf(
+      '<div class="mask"><div class="unmask"><p>hi</p></div></div>',
+    );
+    expect(
+      call(el, { maskSel: '.mask', unmaskSel: '.unmask', maskAll: true }),
+    ).toBe(false);
   });
 
   it('honours a mask class (not just selector)', () => {
-    expect(call(leaf('<div class="rr-mask"><p>hi</p></div>'), { maskClass: 'rr-mask' })).toBe(true);
+    expect(
+      call(leaf('<div class="rr-mask"><p>hi</p></div>'), {
+        maskClass: 'rr-mask',
+      }),
+    ).toBe(true);
   });
 });
 
@@ -406,7 +440,14 @@ describe('attribute-value masking', () => {
     it('applies maskAttributeFn to a plain attribute value', () => {
       const el = document.createElement('input');
       expect(
-        transformAttribute(document, 'input', 'placeholder', 'you@host.com', el, asterisk),
+        transformAttribute(
+          document,
+          'input',
+          'placeholder',
+          'you@host.com',
+          el,
+          asterisk,
+        ),
       ).toBe('************');
     });
 

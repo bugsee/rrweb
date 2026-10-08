@@ -463,7 +463,11 @@ describe('utils', () => {
 
     it('still masks when no element is provided but options apply (regression)', () => {
       expect(
-        shouldMaskInput({ maskInputOptions: { text: true }, tagName: 'INPUT', type: 'text' }),
+        shouldMaskInput({
+          maskInputOptions: { text: true },
+          tagName: 'INPUT',
+          type: 'text',
+        }),
       ).toBe(true);
     });
   });
@@ -484,7 +488,9 @@ describe('utils', () => {
     ) =>
       resolveInputValue({
         element: el,
-        maskInputOptions: opts.maskAll ? { text: true, password: true } : { password: true },
+        maskInputOptions: opts.maskAll
+          ? { text: true, password: true }
+          : { password: true },
         tagName: el.tagName,
         type: el.getAttribute('type'),
         value: 'secret',
@@ -493,35 +499,70 @@ describe('utils', () => {
       });
 
     it('keeps the real value of an input matching unmaskInputSelector', () => {
-      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true, unmask: '.bugsee-unmask' })).toBe('secret');
+      expect(
+        resolve(input({ type: 'text', class: 'bugsee-unmask' }), {
+          maskAll: true,
+          unmask: '.bugsee-unmask',
+        }),
+      ).toBe('secret');
     });
 
     it('masks an input that does not match', () => {
-      expect(resolve(input({ type: 'text' }), { maskAll: true, unmask: '.bugsee-unmask' })).toBe('******');
+      expect(
+        resolve(input({ type: 'text' }), {
+          maskAll: true,
+          unmask: '.bugsee-unmask',
+        }),
+      ).toBe('******');
     });
 
     it('masks as before when no unmask selector is given', () => {
-      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true })).toBe('******');
+      expect(
+        resolve(input({ type: 'text', class: 'bugsee-unmask' }), {
+          maskAll: true,
+        }),
+      ).toBe('******');
     });
 
     it('leaves an unmasked-by-options input alone, with or without a selector', () => {
       expect(resolve(input({ type: 'text' }))).toBe('secret');
-      expect(resolve(input({ type: 'text', class: 'x' }), { unmask: '.bugsee-unmask' })).toBe('secret');
+      expect(
+        resolve(input({ type: 'text', class: 'x' }), {
+          unmask: '.bugsee-unmask',
+        }),
+      ).toBe('secret');
     });
 
     it.each([
       ['a password field', { type: 'password' }],
-      ['a credit-card autocomplete field', { type: 'text', autocomplete: 'cc-number' }],
-      ['a one-time-code autocomplete field', { type: 'text', autocomplete: 'one-time-code' }],
-    ])('never un-masks %s, even when it matches the unmask selector', (_label, attrs) => {
-      const el = input({ ...attrs, class: 'bugsee-unmask' });
-      expect(resolve(el, { maskAll: true, unmask: '.bugsee-unmask' })).toBe('******');
-      expect(resolve(el, { maskAll: false, unmask: '.bugsee-unmask' })).toBe('******');
-    });
+      [
+        'a credit-card autocomplete field',
+        { type: 'text', autocomplete: 'cc-number' },
+      ],
+      [
+        'a one-time-code autocomplete field',
+        { type: 'text', autocomplete: 'one-time-code' },
+      ],
+    ])(
+      'never un-masks %s, even when it matches the unmask selector',
+      (_label, attrs) => {
+        const el = input({ ...attrs, class: 'bugsee-unmask' });
+        expect(resolve(el, { maskAll: true, unmask: '.bugsee-unmask' })).toBe(
+          '******',
+        );
+        expect(resolve(el, { maskAll: false, unmask: '.bugsee-unmask' })).toBe(
+          '******',
+        );
+      },
+    );
 
     it('fails closed when the unmask selector is invalid', () => {
-      expect(resolve(input({ type: 'text', class: 'bugsee-unmask' }), { maskAll: true, unmask: '[[bad' })).toBe('******');
+      expect(
+        resolve(input({ type: 'text', class: 'bugsee-unmask' }), {
+          maskAll: true,
+          unmask: '[[bad',
+        }),
+      ).toBe('******');
     });
   });
 });
-

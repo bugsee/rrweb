@@ -47,8 +47,13 @@ describe('record — unmaskInputSelector on every value path', () => {
           e.type === EventType.IncrementalSnapshot &&
           e.data.source === IncrementalSource.Mutation,
       )
-      .flatMap((e) =>
-        (e.data as { attributes: Array<{ attributes: Record<string, unknown> }> }).attributes,
+      .flatMap(
+        (e) =>
+          (
+            e.data as {
+              attributes: Array<{ attributes: Record<string, unknown> }>;
+            }
+          ).attributes,
       )
       .map((a) => a.attributes.value)
       .filter((v) => v !== undefined);
@@ -70,15 +75,24 @@ describe('record — unmaskInputSelector on every value path', () => {
   });
 
   it.each([
-    ['a password field', '<input id="f" type="password" class="bugsee-unmask">'],
-    ['a credit-card field', '<input id="f" type="text" autocomplete="cc-number" class="bugsee-unmask">'],
-  ])('never records the typed value of %s, even when unmasked', async (_label, html) => {
-    document.body.innerHTML = html;
-    const events = start();
-    type(document.getElementById('f') as HTMLInputElement, '4242');
-    await tick();
-    expect(inputValues(events)).toEqual(['****']);
-  });
+    [
+      'a password field',
+      '<input id="f" type="password" class="bugsee-unmask">',
+    ],
+    [
+      'a credit-card field',
+      '<input id="f" type="text" autocomplete="cc-number" class="bugsee-unmask">',
+    ],
+  ])(
+    'never records the typed value of %s, even when unmasked',
+    async (_label, html) => {
+      document.body.innerHTML = html;
+      const events = start();
+      type(document.getElementById('f') as HTMLInputElement, '4242');
+      await tick();
+      expect(inputValues(events)).toEqual(['****']);
+    },
+  );
 
   it('records a value set through the value ATTRIBUTE of an unmasked input as-is', async () => {
     document.body.innerHTML = `
@@ -105,7 +119,8 @@ describe('record — unmaskInputSelector on every value path', () => {
   });
 
   it('keeps a sensitive field masked on the attribute path too', async () => {
-    document.body.innerHTML = '<input id="f" type="password" class="bugsee-unmask">';
+    document.body.innerHTML =
+      '<input id="f" type="password" class="bugsee-unmask">';
     const events = start();
     await tick();
     document.getElementById('f')!.setAttribute('value', 'hunter2');

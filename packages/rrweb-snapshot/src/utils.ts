@@ -294,7 +294,8 @@ export function shouldMaskInput({
   element?: HTMLElement;
 }): boolean {
   // An <option>'s masking follows its containing <select>.
-  const effectiveTag = tagName.toUpperCase() === 'OPTION' ? 'SELECT' : tagName.toUpperCase();
+  const effectiveTag =
+    tagName.toUpperCase() === 'OPTION' ? 'SELECT' : tagName.toUpperCase();
   const actualType = type && toLowerCase(type);
   const autocomplete = element?.getAttribute('autocomplete');
   return Boolean(
@@ -343,7 +344,9 @@ export function maskInputValue({
 function isSensitiveInput(element: HTMLElement, type: string | null): boolean {
   if (type && toLowerCase(type) === 'password') return true;
   const autocomplete = element.getAttribute('autocomplete');
-  return Boolean(autocomplete && SENSITIVE_AUTOCOMPLETE.has(toLowerCase(autocomplete)));
+  return Boolean(
+    autocomplete && SENSITIVE_AUTOCOMPLETE.has(toLowerCase(autocomplete)),
+  );
 }
 
 /**
@@ -384,7 +387,14 @@ export function resolveInputValue({
     }
     if (unmasked) return value || '';
   }
-  return maskInputValue({ element, maskInputOptions, tagName, type, value, maskInputFn });
+  return maskInputValue({
+    element,
+    maskInputOptions,
+    tagName,
+    type,
+    value,
+    maskInputFn,
+  });
 }
 
 export function toLowerCase<T extends string>(str: T): Lowercase<T> {

@@ -279,7 +279,10 @@ export function classMatchesRegex(
 }
 
 /** Does an element's own class list match a regex? (leaf check, no ancestor walk) */
-export function elementClassMatchesRegex(el: HTMLElement, regex: RegExp): boolean {
+export function elementClassMatchesRegex(
+  el: HTMLElement,
+  regex: RegExp,
+): boolean {
   for (let eIndex = el.classList.length; eIndex--; ) {
     if (regex.test(el.classList[eIndex])) return true;
   }
@@ -300,7 +303,12 @@ export function distanceToMatch(
   if (node.nodeType !== node.ELEMENT_NODE) return -1;
   if (distance > limit) return -1;
   if (matchPredicate(node)) return distance;
-  return distanceToMatch(dom.parentNode(node), matchPredicate, limit, distance + 1);
+  return distanceToMatch(
+    dom.parentNode(node),
+    matchPredicate,
+    limit,
+    distance + 1,
+  );
 }
 
 /** Build a predicate that matches an element by class (string or regex) and/or a CSS selector. */
@@ -383,8 +391,8 @@ export function needMaskingText(
         ? maskDistance <= unmaskDistance
         : true
       : unmaskDistance >= 0
-        ? false
-        : !!maskAllText;
+      ? false
+      : !!maskAllText;
   } catch (e) {
     //
   }
@@ -672,7 +680,12 @@ function serializeElementNode(
     newlyAddedElement = false,
     rootId,
   } = options;
-  const needBlock = _isBlockedElement(n, blockClass, blockSelector, unblockSelector);
+  const needBlock = _isBlockedElement(
+    n,
+    blockClass,
+    blockSelector,
+    unblockSelector,
+  );
   const tagName = getValidTagName(n);
   let attributes: attributes = {};
   const len = n.attributes.length;
