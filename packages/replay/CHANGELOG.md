@@ -1,5 +1,65 @@
 # @rrweb/replay
 
+## 2.1.7
+
+### Patch Changes
+
+- [#1948](https://github.com/rrweb-io/rrweb/pull/1948) [`c6724f5`](https://github.com/rrweb-io/rrweb/commit/c6724f5f65beff1a8d5f925d4c8b8d7be4943804) Thanks [@eoghanmurray](https://github.com/eoghanmurray)! - Fix replay side of [#1920](https://github.com/rrweb-io/rrweb/issues/1920). Fixes recordings with bad css text split data produced since [#1640](https://github.com/rrweb-io/rrweb/issues/1640)
+
+- Updated dependencies [[`c6724f5`](https://github.com/rrweb-io/rrweb/commit/c6724f5f65beff1a8d5f925d4c8b8d7be4943804), [`c6724f5`](https://github.com/rrweb-io/rrweb/commit/c6724f5f65beff1a8d5f925d4c8b8d7be4943804)]:
+  - rrweb@2.1.7
+  - @rrweb/types@2.1.7
+
+## 2.1.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb@2.1.6
+  - @rrweb/types@2.1.6
+
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`5869344`](https://github.com/rrweb-io/rrweb/commit/5869344a16ec04873c2a0bef3ced0be9c906fcbb), [`5869344`](https://github.com/rrweb-io/rrweb/commit/5869344a16ec04873c2a0bef3ced0be9c906fcbb)]:
+  - rrweb@2.1.5
+  - @rrweb/types@2.1.5
+
+## 2.1.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb@2.1.4
+  - @rrweb/types@2.1.4
+
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`7b10fba`](https://github.com/rrweb-io/rrweb/commit/7b10fba6f9736acd89b60d26974eeeb7d7874597)]:
+  - rrweb@2.1.3
+  - @rrweb/types@2.1.3
+
+## 2.1.2
+
+### Patch Changes
+
+- [#1769](https://github.com/rrweb-io/rrweb/pull/1769) [`956fc48`](https://github.com/rrweb-io/rrweb/commit/956fc48e4c7624d343dd456b4498563b1f6f90bb) Thanks [@heathdutton](https://github.com/heathdutton)! - Emit custom events even when skipping over them, eg. when seeking to a specific time
+
+- Updated dependencies [[`956fc48`](https://github.com/rrweb-io/rrweb/commit/956fc48e4c7624d343dd456b4498563b1f6f90bb), [`129a805`](https://github.com/rrweb-io/rrweb/commit/129a8052364f062f134bbe717c7ee3be6105e808)]:
+  - rrweb@2.1.2
+  - @rrweb/types@2.1.2
+
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb@2.1.1
+  - @rrweb/types@2.1.1
+
 ## 2.1.0
 
 ### Patch Changes

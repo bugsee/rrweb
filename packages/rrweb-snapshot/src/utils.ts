@@ -557,6 +557,10 @@ export function absolutifyURLs(cssText: string | null, href: string): string {
   );
 }
 
+const cssNormalizeBase = '(?:/\\*[^*]*\\*/)|[\\s;]'; // whitespace
+const cssNormalizeRe = new RegExp(`${cssNormalizeBase}|\\b(0)px?`, 'g');
+const cssNormalizeReNoPx = new RegExp(cssNormalizeBase, 'g');
+
 /**
  * Intention is to normalize by remove spaces, semicolons and CSS comments
  * so that we can compare css as authored vs. output of stringifyStylesheet
@@ -569,11 +573,9 @@ export function normalizeCssString(
    */
   _testNoPxNorm = false,
 ): string {
-  if (_testNoPxNorm) {
-    return cssText.replace(/(\/\*[^*]*\*\/)|[\s;]/g, '');
-  } else {
-    return cssText.replace(/(\/\*[^*]*\*\/)|[\s;]/g, '').replace(/0px/g, '0');
-  }
+  return _testNoPxNorm
+    ? cssText.replace(cssNormalizeReNoPx, '')
+    : cssText.replace(cssNormalizeRe, '$1');
 }
 
 /**

@@ -1,5 +1,54 @@
 # rrvideo
 
+## 2.1.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.7
+
+## 2.1.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.6
+
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.5
+
+## 2.1.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.4
+
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.3
+
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb-player@2.1.2
+
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`a11f8ef`](https://github.com/rrweb-io/rrweb/commit/a11f8ef7cedbfe0f39e3c8f806bad299aa50f50d)]:
+  - rrweb-player@2.1.1
+
 ## 2.1.0
 
 ### Patch Changes

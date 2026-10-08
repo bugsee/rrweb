@@ -1,5 +1,79 @@
 # @rrweb/browser-client
 
+## 2.1.7
+
+### Patch Changes
+
+- Updated dependencies [[`c6724f5`](https://github.com/rrweb-io/rrweb/commit/c6724f5f65beff1a8d5f925d4c8b8d7be4943804), [`c6724f5`](https://github.com/rrweb-io/rrweb/commit/c6724f5f65beff1a8d5f925d4c8b8d7be4943804)]:
+  - rrweb@2.1.7
+  - @rrweb/record@2.1.7
+  - @rrweb/types@2.1.7
+  - @rrweb/utils@2.1.7
+
+## 2.1.6
+
+### Patch Changes
+
+- [#1946](https://github.com/rrweb-io/rrweb/pull/1946) [`2aad394`](https://github.com/rrweb-io/rrweb/commit/2aad394fe4de86438ed6e59592f0aeab3646f762) Thanks [@eoghanmurray](https://github.com/eoghanmurray)! - Preserve event order when an HTTP fallback upload fails. The failed batch is now re-queued at the front of the buffer, ahead of events that were recorded while the request was in flight, instead of being appended to the back and arriving out of order.
+
+- [#1943](https://github.com/rrweb-io/rrweb/pull/1943) [`a5dbd21`](https://github.com/rrweb-io/rrweb/commit/a5dbd218b750b02ed3c96573d5abe79d6ef4636c) Thanks [@Juice10](https://github.com/Juice10)! - Fix HTTP fallback uploads resending earlier successful batches when flushing a large event buffer. Failed uploads now requeue only their own batch.
+
+- Updated dependencies []:
+  - rrweb@2.1.6
+  - @rrweb/record@2.1.6
+  - @rrweb/types@2.1.6
+  - @rrweb/utils@2.1.6
+
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`5869344`](https://github.com/rrweb-io/rrweb/commit/5869344a16ec04873c2a0bef3ced0be9c906fcbb), [`5869344`](https://github.com/rrweb-io/rrweb/commit/5869344a16ec04873c2a0bef3ced0be9c906fcbb)]:
+  - rrweb@2.1.5
+  - @rrweb/record@2.1.5
+  - @rrweb/types@2.1.5
+  - @rrweb/utils@2.1.5
+
+## 2.1.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb@2.1.4
+  - @rrweb/record@2.1.4
+  - @rrweb/types@2.1.4
+  - @rrweb/utils@2.1.4
+
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`7b10fba`](https://github.com/rrweb-io/rrweb/commit/7b10fba6f9736acd89b60d26974eeeb7d7874597)]:
+  - rrweb@2.1.3
+  - @rrweb/record@2.1.3
+  - @rrweb/types@2.1.3
+  - @rrweb/utils@2.1.3
+
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`956fc48`](https://github.com/rrweb-io/rrweb/commit/956fc48e4c7624d343dd456b4498563b1f6f90bb), [`129a805`](https://github.com/rrweb-io/rrweb/commit/129a8052364f062f134bbe717c7ee3be6105e808)]:
+  - rrweb@2.1.2
+  - @rrweb/record@2.1.2
+  - @rrweb/types@2.1.2
+  - @rrweb/utils@2.1.2
+
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - rrweb@2.1.1
+  - @rrweb/record@2.1.1
+  - @rrweb/types@2.1.1
+  - @rrweb/utils@2.1.1
+
 ## 2.1.0
 
 ### Patch Changes
