@@ -314,7 +314,7 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
     const richFrame = (attrs: Record<string, string> = {}) => {
       const frame = makeFrame(
         attrs,
-        '<p id="t">text</p><input id="i" type="text"><div id="h0"></div><div id="h1"></div><div id="h2"></div><div id="h3"></div><div id="h4"></div><div id="sh"></div>',
+        '<p id="t">text</p><input id="i" type="text"><div id="h0"></div><div id="h1"></div><div id="h2"></div><div id="h3"></div><div id="h4"></div><video id="v"></video><p id="sel">selected</p><div id="sh"></div>',
       );
       const sh = frame.contentDocument!.getElementById('sh')!;
       sh.attachShadow({ mode: 'open' }).innerHTML = '<b id="sb">shadow</b>';
@@ -408,6 +408,25 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
       ],
       ['a scroll', (doc, win) => doc.dispatchEvent(new win.Event('scroll'))],
       [
+        'a media interaction',
+        (doc, win) => {
+          doc.getElementById('v')!.dispatchEvent(new win.Event('play'));
+        },
+      ],
+      [
+        'a custom element definition',
+        (_doc, win) => {
+          (
+            win as unknown as { customElements: CustomElementRegistry }
+          ).customElements.define(
+            'x-late',
+            class extends (
+              win as unknown as { HTMLElement: typeof HTMLElement }
+            ).HTMLElement {},
+          );
+        },
+      ],
+      [
         'a new shadow root on a known host',
         (doc) => {
           doc
@@ -433,6 +452,19 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
         },
       ],
     ];
+
+    it.each(ACTIONS)(
+      'control: %s is reported while the iframe is allowed',
+      async (_name, act) => {
+        const frame = richFrame();
+        const events = start();
+        await tick();
+        const before = events.length;
+        act(frame.contentDocument!, frame.contentWindow!);
+        await tick();
+        expect(withoutMarkers(events.slice(before)).length).toBeGreaterThan(0);
+      },
+    );
 
     it.each(ACTIONS)(
       'stops at once for %s made in the same task as the class change',

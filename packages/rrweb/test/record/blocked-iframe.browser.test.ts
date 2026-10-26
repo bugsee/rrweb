@@ -445,4 +445,68 @@ describe('blocked same-origin iframes in a real browser', function () {
     await new Promise((r) => setTimeout(r, 400));
     expect(dump()).not.toContain(SHEET);
   });
+
+  const selectInFrame = () =>
+    page.evaluate(() => {
+      const d = (document.getElementById('a') as HTMLIFrameElement)
+        .contentDocument!;
+      d.getSelection()!.selectAllChildren(d.body);
+    });
+  const selections = () =>
+    events.filter(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        e.data.source === IncrementalSource.Selection,
+    ).length;
+
+  // rrweb's selection observer listens on the TOP document only, so a selection inside an iframe is not recorded
+  // even while the iframe is allowed (no control possible); this pins that it stays out for a blocked one too.
+  it('a text selection made in the same task as the change that blocks the iframe is not reported', async () => {
+    await openRecorded({}, '<p>x</p>');
+    await page.evaluate(() => {
+      document.getElementById('a')!.classList.remove('ok');
+      const d = (document.getElementById('a') as HTMLIFrameElement)
+        .contentDocument!;
+      d.getSelection()!.selectAllChildren(d.body);
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(selections()).toBe(0);
+  });
+
+  const fonts = () =>
+    events.filter(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        e.data.source === IncrementalSource.Font,
+    ).length;
+  const addFont = () =>
+    page.evaluate(() => {
+      const w = (document.getElementById('a') as HTMLIFrameElement)
+        .contentWindow as unknown as {
+        FontFace: typeof FontFace;
+        document: Document;
+      };
+      const face = new w.FontFace(
+        'LateFont',
+        'url(data:font/woff2;base64,AAAA)',
+      );
+      w.document.fonts.add(face);
+    });
+
+  it('control: a font added in a recorded iframe is reported (collectFonts)', async () => {
+    await openRecorded({ collectFonts: true }, '<p>x</p>');
+    await addFont();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fonts()).toBeGreaterThan(0);
+  });
+
+  it('a font added in the same task as the change that blocks the iframe is not reported', async () => {
+    await openRecorded({ collectFonts: true }, '<p>x</p>');
+    await page.evaluate(() =>
+      document.getElementById('a')!.classList.remove('ok'),
+    );
+    await addFont();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(fonts()).toBe(0);
+  });
 });
