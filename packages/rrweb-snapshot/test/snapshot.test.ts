@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import snapshot, {
   _isBlockedElement,
+  _isBlockedInContext,
   needMaskingText,
   ignoreAttribute,
   serializeNodeWithId,
@@ -618,6 +619,137 @@ describe('blocked iframes are never entered', () => {
     let loaded = 0;
     serialize(iframe, () => loaded++);
     iframe.className = 'rr-block'; // becomes blocked before the load listener fires
+    iframe.dispatchEvent(new Event('load'));
+    await tick();
+    expect(loaded).toBe(0);
+  });
+});
+
+describe('_isBlockedInContext()', () => {
+  const tree = (html: string) => {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    document.body.appendChild(root);
+    return root;
+  };
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('is blocked by itself, by a blocked ancestor, or not at all', () => {
+    const root = tree(
+      '<div class="rr-block"><section><iframe id="a"></iframe></section></div><iframe id="b" class="rr-block"></iframe><iframe id="c"></iframe>',
+    );
+    const f = (id: string) => root.querySelector(`#${id}`) as HTMLElement;
+    expect(_isBlockedInContext(f('a'), 'rr-block', null)).toBe(true);
+    expect(_isBlockedInContext(f('b'), 'rr-block', null)).toBe(true);
+    expect(_isBlockedInContext(f('c'), 'rr-block', null)).toBe(false);
+  });
+
+  it('honours blockSelector on ancestors too', () => {
+    const root = tree('<div data-private><iframe id="a"></iframe></div>');
+    expect(
+      _isBlockedInContext(
+        root.querySelector('#a') as HTMLElement,
+        'rr-block',
+        '[data-private]',
+      ),
+    ).toBe(true);
+  });
+
+  it('unblockSelector opts the element itself back in, never an ancestor block', () => {
+    const root = tree(
+      '<iframe id="a" class="rr-block ok"></iframe><div class="rr-block"><iframe id="b" class="ok"></iframe></div>',
+    );
+    expect(
+      _isBlockedInContext(
+        root.querySelector('#a') as HTMLElement,
+        'rr-block',
+        null,
+        '.ok',
+      ),
+    ).toBe(false);
+    expect(
+      _isBlockedInContext(
+        root.querySelector('#b') as HTMLElement,
+        'rr-block',
+        null,
+        '.ok',
+      ),
+    ).toBe(true);
+    // an ancestor matching the unblock selector is still blocked
+    const root2 = tree(
+      '<div class="rr-block ok"><iframe id="c"></iframe></div>',
+    );
+    expect(
+      _isBlockedInContext(
+        root2.querySelector('#c') as HTMLElement,
+        'rr-block',
+        null,
+        '.ok',
+      ),
+    ).toBe(true);
+  });
+
+  it('looks through shadow roots to their hosts', () => {
+    const root = tree('<div class="rr-block" id="host"></div>');
+    const shadow = (root.querySelector('#host') as HTMLElement).attachShadow({
+      mode: 'open',
+    });
+    const inner = document.createElement('iframe');
+    shadow.appendChild(inner);
+    expect(_isBlockedInContext(inner, 'rr-block', null)).toBe(true);
+    const free = tree('<div id="h2"></div>');
+    const s2 = (free.querySelector('#h2') as HTMLElement).attachShadow({
+      mode: 'open',
+    });
+    const inner2 = document.createElement('iframe');
+    s2.appendChild(inner2);
+    expect(_isBlockedInContext(inner2, 'rr-block', null)).toBe(false);
+  });
+
+  it('fails closed when a selector throws', () => {
+    const root = tree('<div><iframe id="a"></iframe></div>');
+    expect(
+      _isBlockedInContext(
+        root.querySelector('#a') as HTMLElement,
+        'rr-block',
+        ':::bad(',
+      ),
+    ).toBe(true);
+    expect(_isBlockedInContext(null as never, 'rr-block', null)).toBe(true);
+  });
+});
+
+describe('an iframe whose container becomes blocked is not entered when its document loads', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('serializeNodeWithId does not read the document once an ancestor is blocked', async () => {
+    const wrap = document.createElement('div');
+    const iframe = document.createElement('iframe');
+    wrap.appendChild(iframe);
+    document.body.appendChild(wrap);
+    iframe.contentDocument!.body.innerHTML = '<p>SECRET</p>';
+    let loaded = 0;
+    serializeNodeWithId(iframe, {
+      doc: document,
+      mirror: new Mirror(),
+      blockClass: 'rr-block',
+      blockSelector: null,
+      maskTextClass: 'maskmask',
+      maskTextSelector: null,
+      skipChild: false,
+      inlineStylesheet: true,
+      maskTextFn: undefined,
+      maskInputFn: undefined,
+      slimDOMOptions: {},
+      onIframeLoad: () => loaded++,
+      iframeLoadTimeout: 10,
+    } as unknown as Parameters<typeof serializeNodeWithId>[1]);
+    wrap.className = 'rr-block'; // the container is blocked before the document is read
     iframe.dispatchEvent(new Event('load'));
     await tick();
     expect(loaded).toBe(0);

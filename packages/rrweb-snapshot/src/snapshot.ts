@@ -258,6 +258,38 @@ export function _isBlockedElement(
   return false;
 }
 
+/**
+ * Whether an element is blocked, or sits inside a blocked ancestor (a block class/selector match on an ancestor,
+ * the shadow-root hosts on the way up included). `unblockSelector` opts the ELEMENT ITSELF back in (as for
+ * `_isBlockedElement`) but never lifts an ancestor's block: nothing inside a blocked ancestor is recorded. Fails
+ * closed: anything that throws counts as blocked.
+ */
+export function _isBlockedInContext(
+  element: HTMLElement,
+  blockClass: string | RegExp,
+  blockSelector: string | null,
+  unblockSelector: string | null = null,
+): boolean {
+  try {
+    if (_isBlockedElement(element, blockClass, blockSelector, unblockSelector)) {
+      return true;
+    }
+    let node: Node | null = dom.parentNode(element);
+    while (node) {
+      if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        _isBlockedElement(node as HTMLElement, blockClass, blockSelector, null)
+      ) {
+        return true;
+      }
+      node = dom.parentNode(node) ?? (isShadowRoot(node) ? dom.host(node) : null);
+    }
+    return false;
+  } catch (e) {
+    return true;
+  }
+}
+
 export function classMatchesRegex(
   node: Node | null,
   regex: RegExp,
@@ -1285,7 +1317,7 @@ export function serializeNodeWithId(
         // The iframe may have become blocked since it was serialized (class/attribute change): re-check at the
         // time the document is read, fail closed if the check itself throws.
         if (
-          _isBlockedElement(
+          _isBlockedInContext(
             n as HTMLIFrameElement,
             blockClass,
             blockSelector,

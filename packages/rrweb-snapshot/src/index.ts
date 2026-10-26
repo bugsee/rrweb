@@ -10,6 +10,7 @@ import snapshot, {
   IGNORED_NODE,
   genId,
   _isBlockedElement,
+  _isBlockedInContext,
 } from './snapshot';
 import rebuild, {
   buildNodeWithSN,
@@ -42,4 +43,5 @@ export {
   IGNORED_NODE,
   genId,
   _isBlockedElement,
+  _isBlockedInContext,
 };
