@@ -131,8 +131,10 @@ export class IframeManager {
   /**
    * An attribute of `target` changed and `target` is blocked or unchanged for rrweb's purposes: if it is an
    * attached iframe that is now blocked, or contains one, stop recording those iframes at once and say so with a
-   * placeholder marker (`rr_width`/`rr_height`) on the iframe, so the stream shows the iframe turned into a
-   * placeholder. (`Node.contains` includes the node itself.) Free when no iframe is attached.
+   * placeholder marker (`rr_width`/`rr_height`) on the iframe. The marker tells consumers of the stream (the SDK
+   * guard) that the iframe is blocked from now on; it does NOT change a replay: the replayer only reads
+   * `rr_width`/`rr_height` when it first builds a node, so a replay keeps showing the iframe's last pre-block
+   * content until the next full snapshot. (`Node.contains` includes the node itself.) Free when no iframe is attached.
    */
   public releaseBlockedIframes(target: Node) {
     for (const iframeEl of [...this.attachedIframes]) {
