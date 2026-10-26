@@ -14,6 +14,7 @@ import {
   hasShadowRoot,
   isSerializedIframe,
   isSerializedStylesheet,
+  isIframeBlocked,
   nowTimestamp,
 } from '../utils';
 import type { recordOptions } from '../types';
@@ -293,6 +294,8 @@ function record<T = eventWithTime>(
     stylesheetManager: stylesheetManager,
     recordCrossOriginIframes,
     wrappedEmit,
+    isIframeBlocked: (iframeEl) =>
+      isIframeBlocked(iframeEl, blockClass, blockSelector, unblockSelector),
   });
 
   /**
@@ -322,6 +325,7 @@ function record<T = eventWithTime>(
   });
 
   const shadowDomManager = new ShadowDomManager({
+    isDocBlocked: (doc) => iframeManager.isDocBlocked(doc),
     mutationCb: wrappedMutationEmit,
     scrollCb: wrappedScrollEmit,
     bypassOptions: {
@@ -447,11 +451,21 @@ function record<T = eventWithTime>(
     const handlers: listenerHandler[] = [];
 
     const observe = (doc: Document) => {
+      // Everything the observers of an iframe document report goes through this gate, which is evaluated at
+      // emit time against the live DOM: an iframe that became blocked after it was attached stops being
+      // recorded immediately (its observers are then released), not after the parent has processed the change.
+      const gate =
+        <A extends unknown[]>(fn: (...args: A) => void) =>
+        (...args: A) => {
+          if (iframeManager.isDocBlocked(doc)) return;
+          fn(...args);
+        };
+      const emit = gate(wrappedEmit);
       return callbackWrapper(initObservers)(
         {
-          mutationCb: wrappedMutationEmit,
+          mutationCb: gate(wrappedMutationEmit),
           mousemoveCb: (positions, source) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source,
@@ -459,16 +473,16 @@ function record<T = eventWithTime>(
               },
             }),
           mouseInteractionCb: (d) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.MouseInteraction,
                 ...d,
               },
             }),
-          scrollCb: wrappedScrollEmit,
+          scrollCb: gate(wrappedScrollEmit),
           viewportResizeCb: (d) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.ViewportResize,
@@ -476,7 +490,7 @@ function record<T = eventWithTime>(
               },
             }),
           inputCb: (v) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.Input,
@@ -484,7 +498,7 @@ function record<T = eventWithTime>(
               },
             }),
           mediaInteractionCb: (p) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.MediaInteraction,
@@ -492,7 +506,7 @@ function record<T = eventWithTime>(
               },
             }),
           styleSheetRuleCb: (r) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.StyleSheetRule,
@@ -500,7 +514,7 @@ function record<T = eventWithTime>(
               },
             }),
           styleDeclarationCb: (r) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.StyleDeclaration,
@@ -509,7 +523,7 @@ function record<T = eventWithTime>(
             }),
           canvasMutationCb: wrappedCanvasMutationEmit,
           fontCb: (p) =>
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.Font,
@@ -517,7 +531,7 @@ function record<T = eventWithTime>(
               },
             }),
           selectionCb: (p) => {
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.Selection,
@@ -526,7 +540,7 @@ function record<T = eventWithTime>(
             });
           },
           customElementCb: (c) => {
-            wrappedEmit({
+            emit({
               type: EventType.IncrementalSnapshot,
               data: {
                 source: IncrementalSource.CustomElement,
@@ -574,7 +588,7 @@ function record<T = eventWithTime>(
                 observer: p.observer!,
                 options: p.options,
                 callback: (payload: object) =>
-                  wrappedEmit({
+                  emit({
                     type: EventType.Plugin,
                     data: {
                       plugin: p.name,

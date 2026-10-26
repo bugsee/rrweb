@@ -11,7 +11,12 @@ import type {
   IMirror,
 } from '@rrweb/types';
 import type { Mirror, SlimDOMOptions } from 'rrweb-snapshot';
-import { isShadowRoot, IGNORED_NODE, classMatchesRegex } from 'rrweb-snapshot';
+import {
+  isShadowRoot,
+  IGNORED_NODE,
+  classMatchesRegex,
+  _isBlockedElement,
+} from 'rrweb-snapshot';
 import { RRNode, RRIFrameElement, BaseRRNode } from 'rrdom';
 import dom from '@rrweb/utils';
 export { nowTimestamp } from '@rrweb/utils';
@@ -221,6 +226,30 @@ export function isBlocked(
     if (checkAncestors && el.closest(blockSelector) !== null) return true;
   }
   return false;
+}
+
+/**
+ * Whether an iframe element is blocked: matched by `blockClass` / `blockSelector` (unless `unblockSelector`
+ * opts it back in), or nested in a blocked ancestor. This is the same predicate the snapshot applies when it
+ * decides to serialize the element as a placeholder, and it fails closed (a selector that throws is treated
+ * as blocked). A blocked iframe is a placeholder only: its document is never serialized, observed or emitted.
+ */
+export function isIframeBlocked(
+  iframeEl: HTMLIFrameElement,
+  blockClass: blockClass,
+  blockSelector: string | null,
+  unblockSelector: string | null,
+): boolean {
+  try {
+    if (
+      _isBlockedElement(iframeEl, blockClass, blockSelector, unblockSelector)
+    ) {
+      return true;
+    }
+    return isBlocked(dom.parentNode(iframeEl), blockClass, blockSelector, true);
+  } catch (e) {
+    return true;
+  }
 }
 
 export function isSerialized(n: Node, mirror: Mirror): boolean {

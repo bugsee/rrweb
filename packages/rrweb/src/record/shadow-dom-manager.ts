@@ -30,13 +30,17 @@ export class ShadowDomManager {
   private bypassOptions: BypassOptions;
   private mirror: Mirror;
   private restoreHandlers: (() => void)[] = [];
+  private isDocBlocked: (doc: Document) => boolean;
 
   constructor(options: {
     mutationCb: mutationCallBack;
     scrollCb: scrollCallback;
     bypassOptions: BypassOptions;
     mirror: Mirror;
+    /** Whether `doc` belongs to an iframe that is blocked: nothing inside it may be observed or emitted. */
+    isDocBlocked?: (doc: Document) => boolean;
   }) {
+    this.isDocBlocked = options.isDocBlocked ?? (() => false);
     this.mutationCb = options.mutationCb;
     this.scrollCb = options.scrollCb;
     this.bypassOptions = options.bypassOptions;
@@ -54,13 +58,19 @@ export class ShadowDomManager {
   public addShadowRoot(shadowRoot: ShadowRoot, doc: Document) {
     if (!isNativeShadowDom(shadowRoot)) return;
     if (this.shadowDoms.has(shadowRoot)) return;
+    // `doc` is not always the document the shadow root lives in (the snapshot passes the top document for the
+    // shadow roots of an iframe document too), so the gate is asked about the root's own document.
+    const ownerDoc = shadowRoot.ownerDocument;
+    if (this.isDocBlocked(ownerDoc)) return;
     const handlers: listenerHandler[] = [];
     this.shadowDoms.set(shadowRoot, handlers);
     const stopMutationObserver = initMutationObserver(
       {
         ...this.bypassOptions,
         doc,
-        mutationCb: this.mutationCb,
+        mutationCb: (m) => {
+          if (!this.isDocBlocked(ownerDoc)) this.mutationCb(m);
+        },
         mirror: this.mirror,
         shadowDomManager: this,
       },
@@ -70,7 +80,9 @@ export class ShadowDomManager {
     handlers.push(
       initScrollObserver({
         ...this.bypassOptions,
-        scrollCb: this.scrollCb,
+        scrollCb: (p) => {
+          if (!this.isDocBlocked(ownerDoc)) this.scrollCb(p);
+        },
         // https://gist.github.com/praveenpuglia/0832da687ed5a5d7a0907046c9ef1813
         // scroll is not allowed to pass the boundary, so we need to listen the shadow document
         doc: shadowRoot as unknown as Document,
@@ -81,6 +93,7 @@ export class ShadowDomManager {
     setTimeout(() => {
       // The shadow root was released, or the manager reset, in the meantime.
       if (this.shadowDoms.get(shadowRoot) !== handlers) return;
+      if (this.isDocBlocked(ownerDoc)) return;
       if (
         shadowRoot.adoptedStyleSheets &&
         shadowRoot.adoptedStyleSheets.length > 0

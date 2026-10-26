@@ -34,6 +34,13 @@ export class IframeManager {
     this.handleMessage(message as MessageEvent);
   private stylesheetManager: StylesheetManager;
   private recordCrossOriginIframes: boolean;
+  private isIframeBlocked: (iframeEl: HTMLIFrameElement) => boolean;
+  // The iframe element whose same-origin document is being recorded, by document.
+  private docOwners: WeakMap<Document, HTMLIFrameElement> = new WeakMap();
+  // Documents whose recording was released because their iframe became blocked. They stay gated, even if the
+  // iframe is unblocked again, until a new full snapshot attaches them again: resuming mid-stream would leave
+  // a hole (and the observers that would resume are gone).
+  private releasedDocs: WeakSet<Document> = new WeakSet();
 
   constructor(options: {
     mirror: Mirror;
@@ -41,7 +48,10 @@ export class IframeManager {
     stylesheetManager: StylesheetManager;
     recordCrossOriginIframes: boolean;
     wrappedEmit: (e: eventWithoutTime, isCheckout?: boolean) => void;
+    /** Whether an iframe element itself is blocked (a blocked iframe is never recorded). Defaults to never. */
+    isIframeBlocked?: (iframeEl: HTMLIFrameElement) => boolean;
   }) {
+    this.isIframeBlocked = options.isIframeBlocked ?? (() => false);
     this.mutationCb = options.mutationCb;
     this.wrappedEmit = options.wrappedEmit;
     this.stylesheetManager = options.stylesheetManager;
@@ -57,7 +67,54 @@ export class IframeManager {
     }
   }
 
+  /**
+   * Whether the iframe, or any iframe it is nested in, is blocked. Evaluated against the live DOM every time,
+   * so an iframe that became blocked after it was first recorded is caught too.
+   */
+  public isBlocked(iframeEl: HTMLIFrameElement): boolean {
+    let el: HTMLIFrameElement | undefined = iframeEl;
+    while (el) {
+      if (this.isIframeBlocked(el)) return true;
+      el = this.docOwners.get(el.ownerDocument);
+    }
+    return false;
+  }
+
+  /**
+   * Whether `doc` is the document of an attached iframe that is (now) blocked. If so the recording of that
+   * iframe is released here and the caller must drop whatever it was about to emit. The top document and
+   * documents of iframes that are not blocked are never affected.
+   */
+  public isDocBlocked(doc: Document): boolean {
+    if (this.releasedDocs.has(doc)) return true;
+    const owner = this.docOwners.get(doc);
+    if (!owner || !this.isBlocked(owner)) return false;
+    this.detachIframe(owner);
+    return true;
+  }
+
+  /** Stops recording an attached iframe (observers, shadow roots, window listeners, message routing). */
+  public detachIframe(iframeEl: HTMLIFrameElement) {
+    const win = iframeEl.contentWindow;
+    let doc: Document | null = null;
+    try {
+      doc = iframeEl.contentDocument;
+    } catch {
+      // navigated to a cross-origin page
+    }
+    if (win) {
+      this.crossOriginIframeMap.delete(win);
+      const stop = this.attachedWindows.get(win);
+      if (stop) stop();
+    }
+    if (doc) {
+      this.releasedDocs.add(doc);
+      this.unloadListener?.(doc);
+    }
+  }
+
   public addIframe(iframeEl: HTMLIFrameElement) {
+    if (this.isBlocked(iframeEl)) return;
     this.iframes.set(iframeEl, true);
     if (iframeEl.contentWindow)
       this.crossOriginIframeMap.set(iframeEl.contentWindow, iframeEl);
@@ -75,6 +132,12 @@ export class IframeManager {
     iframeEl: HTMLIFrameElement,
     childSn: serializedNodeWithId,
   ) {
+    // Defence in depth: the snapshot already refuses to serialize a blocked iframe's document.
+    if (this.isBlocked(iframeEl)) return;
+    if (iframeEl.contentDocument) {
+      this.docOwners.set(iframeEl.contentDocument, iframeEl);
+      this.releasedDocs.delete(iframeEl.contentDocument);
+    }
     this.mutationCb({
       adds: [
         {
@@ -158,6 +221,8 @@ export class IframeManager {
 
     const iframeEl = this.crossOriginIframeMap.get(message.source);
     if (!iframeEl) return;
+    // a blocked iframe (or one nested in a blocked iframe) can't inject events either
+    if (this.isBlocked(iframeEl)) return;
 
     const transformedEvent = this.transformCrossOriginEvent(
       iframeEl,
