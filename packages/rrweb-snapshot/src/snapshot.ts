@@ -271,7 +271,9 @@ export function _isBlockedInContext(
   unblockSelector: string | null = null,
 ): boolean {
   try {
-    if (_isBlockedElement(element, blockClass, blockSelector, unblockSelector)) {
+    if (
+      _isBlockedElement(element, blockClass, blockSelector, unblockSelector)
+    ) {
       return true;
     }
     let node: Node | null = dom.parentNode(element);
@@ -282,7 +284,8 @@ export function _isBlockedInContext(
       ) {
         return true;
       }
-      node = dom.parentNode(node) ?? (isShadowRoot(node) ? dom.host(node) : null);
+      node =
+        dom.parentNode(node) ?? (isShadowRoot(node) ? dom.host(node) : null);
     }
     return false;
   } catch (e) {
