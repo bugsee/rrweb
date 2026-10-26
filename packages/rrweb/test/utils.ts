@@ -21,7 +21,8 @@ export async function launchPuppeteer(
   options?: Parameters<(typeof puppeteer)['launch']>[0],
 ) {
   return await puppeteer.launch({
-    headless: process.env.PUPPETEER_HEADLESS ? 'new' : false,
+    // Always headless: a visible window steals focus on every local run (opt back in with options.headless).
+    headless: true,
     defaultViewport: {
       width: 1920,
       height: 1080,
