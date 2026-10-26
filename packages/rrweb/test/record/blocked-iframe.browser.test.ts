@@ -228,4 +228,221 @@ describe('blocked same-origin iframes in a real browser', function () {
     await waitForRAF(page);
     expect(dump()).not.toContain('AFTER-BLOCK');
   });
+
+  // --- iframes that are refused or released AFTER they were recorded -------------------------------------------
+  const SHEET = 'STYLE-SECRET-VALUE';
+
+  /** A page with one recorded (explicitly unblocked) iframe inside `#wrap`, recording started. */
+  const openRecorded = async (
+    opts: Record<string, unknown>,
+    srcdoc: string,
+  ) => {
+    page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(`<!DOCTYPE html><html><body>
+      <div id='wrap'><iframe id='a' class='ok' srcdoc="${srcdoc}"></iframe></div></body></html>`);
+    await page.evaluate(code);
+    events = [];
+    await page.exposeFunction('emit', (e: eventWithTime) => {
+      if (e.type === EventType.DomContentLoaded || e.type === EventType.Load)
+        return;
+      events.push(e);
+    });
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const check = () =>
+            (document.getElementById('a') as HTMLIFrameElement).contentDocument
+              ?.readyState === 'complete'
+              ? resolve()
+              : setTimeout(check, 20);
+          check();
+        }),
+    );
+    await page.evaluate((o) => {
+      const win = window as unknown as IWindow;
+      win.rrweb.record({
+        emit: win.emit,
+        blockSelector: 'iframe:not(.ok)',
+        ...o,
+      } as never);
+    }, opts as never);
+    await waitForRAF(page);
+    await new Promise((r) => setTimeout(r, 300));
+  };
+
+  const adopt = () =>
+    page.evaluate((v) => {
+      const f = document.getElementById('a') as HTMLIFrameElement;
+      const w = f.contentWindow as unknown as {
+        CSSStyleSheet: typeof CSSStyleSheet;
+      };
+      const sheet = new w.CSSStyleSheet();
+      sheet.replaceSync(`p::after{content:"${v}"}`);
+      (f.contentDocument as Document).adoptedStyleSheets = [sheet];
+    }, SHEET);
+
+  const markerCount = () =>
+    events.filter((e) => {
+      const d = e.data as any;
+      return (
+        e.type === EventType.IncrementalSnapshot &&
+        d.source === IncrementalSource.Mutation &&
+        d.attributes?.length === 1 &&
+        'rr_width' in d.attributes[0].attributes
+      );
+    }).length;
+
+  it('control: an unblocked recorded iframe reports the stylesheet it adopts', async () => {
+    await openRecorded({}, '<p>x</p>');
+    await adopt();
+    await waitForRAF(page);
+    expect(dump()).toContain(SHEET);
+  });
+
+  it('an ancestor becomes blocked, the iframe reloads, a shadow root is attached in it: nothing is recorded', async () => {
+    await openRecorded(
+      { maskAllText: false },
+      "<div id='h'></div><script>document.getElementById('h').textContent = parent.__reloaded ? 'RELOADED-' + 'SECRET' : 'first'</script>",
+    );
+    await page.evaluate(() =>
+      document.getElementById('wrap')!.classList.add('rr-block'),
+    );
+    await waitForRAF(page);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const f = document.getElementById('a') as HTMLIFrameElement;
+          f.addEventListener('load', () => resolve(), { once: true });
+          (window as unknown as { __reloaded: boolean }).__reloaded = true;
+          f.contentWindow!.location.reload();
+        }),
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    await page.evaluate(() => {
+      const d = (document.getElementById('a') as HTMLIFrameElement)
+        .contentDocument!;
+      d.getElementById('h')!.attachShadow({ mode: 'open' }).innerHTML =
+        '<p>SHADOW-SECRET-ONE</p>';
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    await page.evaluate(() => {
+      const d = (document.getElementById('a') as HTMLIFrameElement)
+        .contentDocument!;
+      const root = d.getElementById('h')!.shadowRoot!;
+      const p = d.createElement('p');
+      p.textContent = 'SHADOW-SECRET-TWO';
+      root.appendChild(p);
+    });
+    await waitForRAF(page);
+    for (const secret of ['RELOADED-SECRET', 'SHADOW-SECRET'])
+      expect(dump()).not.toContain(secret);
+    expect(markerCount()).toBe(1);
+  });
+
+  it('the iframe loses its unblock class, then adopts a stylesheet: nothing is recorded', async () => {
+    await openRecorded({ maskAllText: false }, '<p>x</p>');
+    await page.evaluate(() =>
+      document.getElementById('a')!.classList.remove('ok'),
+    );
+    await waitForRAF(page);
+    await adopt();
+    await waitForRAF(page);
+    expect(dump()).not.toContain(SHEET);
+    expect(markerCount()).toBe(1);
+  });
+
+  it('an ancestor becomes blocked, then the iframe adopts a stylesheet: nothing is recorded', async () => {
+    await openRecorded({ maskAllText: false }, '<p>x</p>');
+    await page.evaluate(() =>
+      document.getElementById('wrap')!.classList.add('rr-block'),
+    );
+    await waitForRAF(page);
+    await adopt();
+    await waitForRAF(page);
+    expect(dump()).not.toContain(SHEET);
+  });
+
+  const linkPage = async (block: boolean) => {
+    page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (req.url().startsWith('http://slow.invalid/')) {
+        setTimeout(
+          () =>
+            req.respond({
+              status: 200,
+              contentType: 'text/css',
+              headers: { 'Access-Control-Allow-Origin': '*' },
+              body: `p::after{content:"${SHEET}"}`,
+            }),
+          700,
+        );
+      } else {
+        void req.continue();
+      }
+    });
+    await page.goto('about:blank');
+    await page.setContent(`<!DOCTYPE html><html><body><div id='wrap'><iframe id='a' class='ok'
+      srcdoc="<p>x</p>"></iframe></div></body></html>`);
+    await page.evaluate(code);
+    events = [];
+    await page.exposeFunction('emit', (e: eventWithTime) => {
+      if (e.type === EventType.DomContentLoaded || e.type === EventType.Load)
+        return;
+      events.push(e);
+    });
+    await page.evaluate(() => {
+      const win = window as unknown as IWindow;
+      win.rrweb.record({
+        emit: win.emit,
+        blockSelector: 'iframe:not(.ok)',
+        inlineStylesheet: true,
+      } as never);
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    // a stylesheet added while recording: it is still loading when the iframe is blocked
+    await page.evaluate(() => {
+      const d = (document.getElementById('a') as HTMLIFrameElement)
+        .contentDocument!;
+      const link = d.createElement('link');
+      link.rel = 'stylesheet';
+      link.crossOrigin = 'anonymous'; // a CORS-enabled sheet is readable (and so inlined)
+      link.href = 'http://slow.invalid/s.css';
+      d.head.appendChild(link);
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    if (block)
+      await page.evaluate(() =>
+        document.getElementById('a')!.classList.remove('ok'),
+      );
+    await new Promise((r) => setTimeout(r, 1500)); // it finishes now
+  };
+
+  it('control: a <link> stylesheet that finishes loading in a recorded iframe is reported', async () => {
+    await linkPage(false);
+    expect(dump()).toContain(SHEET);
+  });
+
+  it('a <link> stylesheet that finishes loading after the iframe became blocked is not recorded', async () => {
+    await linkPage(true);
+    expect(dump()).not.toContain(SHEET);
+    expect(markerCount()).toBe(1);
+  });
+
+  it('an adopted style sheet set in the same task as the change that blocks the iframe is not recorded', async () => {
+    await openRecorded({ maskAllText: false }, '<p>x</p>');
+    await page.evaluate((v) => {
+      document.getElementById('a')!.classList.remove('ok');
+      const f = document.getElementById('a') as HTMLIFrameElement;
+      const w = f.contentWindow as unknown as {
+        CSSStyleSheet: typeof CSSStyleSheet;
+      };
+      const sheet = new w.CSSStyleSheet();
+      sheet.replaceSync(`p::after{content:"${v}"}`);
+      (f.contentDocument as Document).adoptedStyleSheets = [sheet];
+    }, SHEET);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(dump()).not.toContain(SHEET);
+  });
 });

@@ -356,8 +356,9 @@ export default class MutationBuffer {
           }
         },
         onIframeLoad: (iframe, childSn) => {
-          this.iframeManager.attachIframe(iframe, childSn);
-          this.shadowDomManager.observeAttachShadow(iframe);
+          // a refused (blocked) iframe is not observed in any way
+          if (this.iframeManager.attachIframe(iframe, childSn))
+            this.shadowDomManager.observeAttachShadow(iframe);
         },
         onStylesheetLoad: (link, childSn) => {
           this.stylesheetManager.attachLinkElement(link, childSn);
@@ -528,6 +529,8 @@ export default class MutationBuffer {
           isBlocked(m.target, this.blockClass, this.blockSelector, false) ||
           value === m.oldValue
         ) {
+          // The change itself is not recorded, but it may be the one that blocks an iframe (or its container).
+          this.iframeManager.releaseBlockedIframes(m.target);
           return;
         }
 

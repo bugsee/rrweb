@@ -15,7 +15,7 @@ import {
   isShadowRoot,
   IGNORED_NODE,
   classMatchesRegex,
-  _isBlockedElement,
+  _isBlockedInContext,
 } from 'rrweb-snapshot';
 import { RRNode, RRIFrameElement, BaseRRNode } from 'rrdom';
 import dom from '@rrweb/utils';
@@ -240,16 +240,12 @@ export function isIframeBlocked(
   blockSelector: string | null,
   unblockSelector: string | null,
 ): boolean {
-  try {
-    if (
-      _isBlockedElement(iframeEl, blockClass, blockSelector, unblockSelector)
-    ) {
-      return true;
-    }
-    return isBlocked(dom.parentNode(iframeEl), blockClass, blockSelector, true);
-  } catch (e) {
-    return true;
-  }
+  return _isBlockedInContext(
+    iframeEl,
+    blockClass,
+    blockSelector,
+    unblockSelector,
+  );
 }
 
 export function isSerialized(n: Node, mirror: Mirror): boolean {

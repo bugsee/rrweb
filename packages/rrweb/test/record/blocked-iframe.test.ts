@@ -59,6 +59,30 @@ const attachIframeMutations = (events: eventWithTime[]) =>
     (e) => (e.data as { isAttachIframe?: boolean }).isAttachIframe,
   );
 
+// When an attached iframe becomes blocked the recorder says so once, with a placeholder marker on the iframe
+// element (rr_width/rr_height); that is the only thing that may be emitted for it from then on.
+const isMarker = (e: eventWithTime) => {
+  const d = e.data as {
+    source?: number;
+    attributes?: Array<{ attributes: object }>;
+    adds?: unknown[];
+    texts?: unknown[];
+    removes?: unknown[];
+  };
+  return (
+    e.type === EventType.IncrementalSnapshot &&
+    d.source === IncrementalSource.Mutation &&
+    d.attributes?.length === 1 &&
+    'rr_width' in d.attributes[0].attributes &&
+    !d.adds?.length &&
+    !d.texts?.length &&
+    !d.removes?.length
+  );
+};
+const withoutMarkers = (events: eventWithTime[]) =>
+  events.filter((e) => !isMarker(e));
+const markers = (events: eventWithTime[]) => events.filter(isMarker);
+
 const mutationAdds = (events: eventWithTime[]) =>
   incremental(events, IncrementalSource.Mutation).flatMap(
     (e) => (e.data as { adds: Array<{ node: SNode }> }).adds,
@@ -354,7 +378,7 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
       await pokeRich(frame, LATE);
 
       // not just "no secret": no event of any kind comes out of the blocked iframe
-      expect(events.slice(before)).toEqual([]);
+      expect(withoutMarkers(events.slice(before))).toEqual([]);
     });
 
     // Each observer on its own, as the FIRST thing that happens after the iframe became blocked (the first
@@ -421,7 +445,7 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
         // no await in between: the iframe's own observers run before the parent document processes the class change
         act(frame.contentDocument!, frame.contentWindow!);
         await tick();
-        expect(events.slice(before)).toEqual([]);
+        expect(withoutMarkers(events.slice(before))).toEqual([]);
       },
     );
 
@@ -435,7 +459,7 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
       await tick();
       const before = events.length;
       await pokeRich(frame, 'WHILE-UNBLOCKED');
-      expect(events.slice(before)).toEqual([]);
+      expect(withoutMarkers(events.slice(before))).toEqual([]);
 
       record.takeFullSnapshot(true);
       await tick();
@@ -581,6 +605,131 @@ describe('blocked same-origin iframes contribute only a placeholder', () => {
       window.dispatchEvent(message(frame));
       await tick();
       expect(dump(events)).not.toContain(SECRET);
+    });
+  });
+
+  describe('the placeholder marker', () => {
+    it('is emitted once, at once, when an attached iframe becomes blocked (even if nothing else happens inside it)', async () => {
+      const frame = makeFrame({ id: 'f' }, '<p>quiet</p>');
+      const events = start();
+      await tick();
+      expect(markers(events)).toHaveLength(0);
+      frame.setAttribute('data-unrelated', '1'); // not blocking: no marker
+      await tick();
+      expect(markers(events)).toHaveLength(0);
+      frame.classList.add('rr-block');
+      await tick();
+      frame.classList.add('another'); // already released: no second marker
+      await tick();
+      expect(markers(events)).toHaveLength(1);
+      const m = markers(events)[0].data as {
+        attributes: Array<{ id: number; attributes: Record<string, string> }>;
+      };
+      expect(m.attributes[0].id).toBe(record.mirror.getId(frame));
+      expect(m.attributes[0].attributes).toHaveProperty('rr_width');
+      expect(m.attributes[0].attributes).toHaveProperty('rr_height');
+    });
+
+    it('is emitted for an iframe whose container becomes blocked', async () => {
+      const box = document.createElement('div');
+      document.body.appendChild(box);
+      const frame = document.createElement('iframe');
+      box.appendChild(frame);
+      const events = start();
+      await tick();
+      box.classList.add('rr-block');
+      await tick();
+      expect(markers(events)).toHaveLength(1);
+    });
+
+    it('is not emitted for an iframe that is not attached (blocked from the start)', async () => {
+      makeFrame({ class: 'rr-block' });
+      const events = start();
+      await tick();
+      document.querySelector('iframe')!.setAttribute('data-x', '1');
+      await tick();
+      expect(markers(events)).toHaveLength(0);
+    });
+
+    it('is not emitted for an iframe that stays unblocked through unblockSelector, whatever changes', async () => {
+      const frame = makeFrame({ class: 'allowed' });
+      const events = start({
+        blockSelector: 'iframe',
+        unblockSelector: '.allowed',
+      });
+      await tick();
+      frame.setAttribute('data-x', '1');
+      frame.classList.add('more');
+      await tick();
+      expect(markers(events)).toHaveLength(0);
+    });
+  });
+
+  describe('an iframe that is refused after it was recorded (blocked ancestor / blockAllMedia off) and then reloads', () => {
+    const reload = async (frame: HTMLIFrameElement) => {
+      const idoc = frame.contentDocument!;
+      idoc.open();
+      idoc.write(
+        '<html><body><div id="host"></div><p id="t">RELOADED</p></body></html>',
+      );
+      idoc.close();
+      frame.dispatchEvent(new Event('load'));
+      await tick();
+    };
+
+    it.each([
+      [
+        'an ancestor became blocked',
+        { blockSelector: 'iframe:not(.ok)' },
+        true,
+      ],
+    ])(
+      '%s: a shadow root attached in the new document is not recorded',
+      async (_name, opts, viaAncestor) => {
+        const wrap = document.createElement('div');
+        document.body.appendChild(wrap);
+        const frame = document.createElement('iframe');
+        frame.className = 'ok';
+        wrap.appendChild(frame);
+        frame.contentDocument!.body.innerHTML = '<p id="t">first</p>';
+        const events = start(opts);
+        await tick();
+        if (viaAncestor) wrap.classList.add('rr-block');
+        await tick();
+        await reload(frame);
+        const idoc = frame.contentDocument!;
+        const host = idoc.getElementById('host')!;
+        host.attachShadow({ mode: 'open' }).innerHTML = '<p>SHADOW-SECRET</p>';
+        await tick();
+        (host.shadowRoot!.firstChild as HTMLElement).appendChild(
+          document.createTextNode('SHADOW-SECRET-2'),
+        );
+        idoc.getElementById('t')!.firstChild!.nodeValue = 'EDIT-SECRET';
+        await tick();
+        const text = dump(withoutMarkers(events));
+        for (const s of ['SHADOW-SECRET', 'EDIT-SECRET', 'RELOADED'])
+          expect(text).not.toContain(s);
+      },
+    );
+  });
+
+  describe('an accepted iframe window gets its attachShadow observed (a refused one does not: the doc gate covers the rest)', () => {
+    const attachShadowSource = (frame: HTMLIFrameElement) =>
+      String(
+        (
+          frame.contentWindow as unknown as {
+            Element: { prototype: { attachShadow: unknown } };
+          }
+        ).Element.prototype.attachShadow,
+      );
+
+    it('control: an accepted iframe does get the patched attachShadow', async () => {
+      const pristine = document.createElement('iframe');
+      document.body.appendChild(pristine);
+      const frame = makeFrame({ class: 'ok' }, '<p>x</p>');
+      start({ blockSelector: 'iframe:not(.ok)' });
+      await tick();
+      expect(attachShadowSource(frame)).not.toBe(attachShadowSource(pristine));
     });
   });
 });

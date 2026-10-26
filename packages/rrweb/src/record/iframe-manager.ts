@@ -41,6 +41,11 @@ export class IframeManager {
   // iframe is unblocked again, until a new full snapshot attaches them again: resuming mid-stream would leave
   // a hole (and the observers that would resume are gone).
   private releasedDocs: WeakSet<Document> = new WeakSet();
+  // The iframes that are being recorded right now (attached, not released). Only used to react to the block
+  // state of an iframe, or of one of its containers, changing; empty (so free) when nothing is attached.
+  private attachedIframes: Set<HTMLIFrameElement> = new Set();
+  // The document being recorded: never gated, whatever frame it happens to be embedded in.
+  private rootDocument: Document;
 
   constructor(options: {
     mirror: Mirror;
@@ -50,7 +55,10 @@ export class IframeManager {
     wrappedEmit: (e: eventWithoutTime, isCheckout?: boolean) => void;
     /** Whether an iframe element itself is blocked (a blocked iframe is never recorded). Defaults to never. */
     isIframeBlocked?: (iframeEl: HTMLIFrameElement) => boolean;
+    /** The recorded (top) document. Defaults to the global `document`. */
+    rootDocument?: Document;
   }) {
+    this.rootDocument = options.rootDocument ?? document;
     this.isIframeBlocked = options.isIframeBlocked ?? (() => false);
     this.mutationCb = options.mutationCb;
     this.wrappedEmit = options.wrappedEmit;
@@ -67,6 +75,21 @@ export class IframeManager {
     }
   }
 
+  /** The iframe element a same-origin document lives in, whether or not it was attached to the recording. */
+  private ownerOf(doc: Document): HTMLIFrameElement | undefined {
+    if (doc === this.rootDocument) return undefined;
+    const registered = this.docOwners.get(doc);
+    if (registered) return registered;
+    try {
+      const frame = doc.defaultView?.frameElement;
+      return frame && frame.nodeName === 'IFRAME'
+        ? (frame as HTMLIFrameElement)
+        : undefined;
+    } catch {
+      return undefined; // a cross-origin parent
+    }
+  }
+
   /**
    * Whether the iframe, or any iframe it is nested in, is blocked. Evaluated against the live DOM every time,
    * so an iframe that became blocked after it was first recorded is caught too.
@@ -75,26 +98,83 @@ export class IframeManager {
     let el: HTMLIFrameElement | undefined = iframeEl;
     while (el) {
       if (this.isIframeBlocked(el)) return true;
-      el = this.docOwners.get(el.ownerDocument);
+      el = this.ownerOf(el.ownerDocument);
     }
     return false;
   }
 
   /**
-   * Whether `doc` is the document of an attached iframe that is (now) blocked. If so the recording of that
-   * iframe is released here and the caller must drop whatever it was about to emit. The top document and
-   * documents of iframes that are not blocked are never affected.
+   * Whether `doc` is the document of an iframe that is (now) blocked, attached to the recording or not. If so
+   * the recording of that iframe is released here and the caller must drop whatever it was about to emit. The
+   * recorded document and documents of iframes that are not blocked are never affected.
    */
   public isDocBlocked(doc: Document): boolean {
     if (this.releasedDocs.has(doc)) return true;
-    const owner = this.docOwners.get(doc);
+    const owner = this.ownerOf(doc);
     if (!owner || !this.isBlocked(owner)) return false;
-    this.detachIframe(owner);
+    this.releaseIframe(owner);
+    this.releasedDocs.add(doc);
     return true;
+  }
+
+  /** The id of the document of the iframe `nodeId`, or of the node itself if it is a document: blocked or not. */
+  public isNodeDocBlocked(nodeId: number): boolean {
+    const node = this.mirror.getNode(nodeId);
+    if (!node) return false;
+    const doc =
+      node.nodeType === Node.DOCUMENT_NODE
+        ? (node as Document)
+        : node.ownerDocument;
+    return doc ? this.isDocBlocked(doc) : false;
+  }
+
+  /**
+   * An attribute of `target` changed and `target` is blocked or unchanged for rrweb's purposes: if it is an
+   * attached iframe that is now blocked, or contains one, stop recording those iframes at once and say so with a
+   * placeholder marker (`rr_width`/`rr_height`) on the iframe, so the stream shows the iframe turned into a
+   * placeholder. (`Node.contains` includes the node itself.) Free when no iframe is attached.
+   */
+  public releaseBlockedIframes(target: Node) {
+    for (const iframeEl of [...this.attachedIframes]) {
+      if (!iframeEl.isConnected) {
+        this.attachedIframes.delete(iframeEl);
+      } else if (target.contains(iframeEl) && this.isBlocked(iframeEl)) {
+        this.releaseIframe(iframeEl);
+      }
+    }
+  }
+
+  /** Stops recording an attached iframe and emits the placeholder marker for it. */
+  private releaseIframe(iframeEl: HTMLIFrameElement) {
+    const wasAttached = this.attachedIframes.has(iframeEl);
+    this.detachIframe(iframeEl);
+    const id = this.mirror.getId(iframeEl);
+    if (!wasAttached || id === -1) return;
+    let size = { width: 0, height: 0 };
+    try {
+      size = iframeEl.getBoundingClientRect();
+    } catch {
+      // keep the zero size
+    }
+    this.mutationCb({
+      adds: [],
+      removes: [],
+      texts: [],
+      attributes: [
+        {
+          id,
+          attributes: {
+            rr_width: `${size.width}px`,
+            rr_height: `${size.height}px`,
+          },
+        },
+      ],
+    });
   }
 
   /** Stops recording an attached iframe (observers, shadow roots, window listeners, message routing). */
   public detachIframe(iframeEl: HTMLIFrameElement) {
+    this.attachedIframes.delete(iframeEl);
     const win = iframeEl.contentWindow;
     let doc: Document | null = null;
     try {
@@ -128,12 +208,17 @@ export class IframeManager {
     this.unloadListener = cb;
   }
 
+  /**
+   * Attach the serialized document of a same-origin iframe. Returns whether the iframe was accepted: a blocked
+   * iframe (or one nested in a blocked iframe) is refused, and nothing may be observed in it.
+   */
   public attachIframe(
     iframeEl: HTMLIFrameElement,
     childSn: serializedNodeWithId,
-  ) {
+  ): boolean {
     // Defence in depth: the snapshot already refuses to serialize a blocked iframe's document.
-    if (this.isBlocked(iframeEl)) return;
+    if (this.isBlocked(iframeEl)) return false;
+    this.attachedIframes.add(iframeEl);
     if (iframeEl.contentDocument) {
       this.docOwners.set(iframeEl.contentDocument, iframeEl);
       this.releasedDocs.delete(iframeEl.contentDocument);
@@ -165,6 +250,7 @@ export class IframeManager {
         iframeEl.contentDocument.adoptedStyleSheets,
         this.mirror.getId(iframeEl.contentDocument),
       );
+    return true;
   }
 
   public destroy() {

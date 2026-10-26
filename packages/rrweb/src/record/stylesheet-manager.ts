@@ -14,11 +14,15 @@ export class StylesheetManager {
   private mutationCb: mutationCallBack;
   private adoptedStyleSheetCb: adoptedStyleSheetCallback;
   public styleMirror = new StyleSheetMirror();
+  private isDocBlocked: (doc: Document) => boolean;
 
   constructor(options: {
     mutationCb: mutationCallBack;
     adoptedStyleSheetCb: adoptedStyleSheetCallback;
+    /** Whether `doc` is the document of a blocked iframe: a stylesheet finishing to load there is not recorded. */
+    isDocBlocked?: (doc: Document) => boolean;
   }) {
+    this.isDocBlocked = options.isDocBlocked ?? (() => false);
     this.mutationCb = options.mutationCb;
     this.adoptedStyleSheetCb = options.adoptedStyleSheetCb;
   }
@@ -27,6 +31,7 @@ export class StylesheetManager {
     linkEl: HTMLLinkElement,
     childSn: serializedNodeWithId,
   ) {
+    if (this.isDocBlocked(linkEl.ownerDocument)) return;
     if ('_cssText' in (childSn as elementNode).attributes)
       this.mutationCb({
         adds: [],

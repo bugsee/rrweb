@@ -21,8 +21,9 @@ export async function launchPuppeteer(
   options?: Parameters<(typeof puppeteer)['launch']>[0],
 ) {
   return await puppeteer.launch({
-    // Always headless: a visible window steals focus on every local run (opt back in with options.headless).
-    headless: true,
+    // Always headless (the modern headless mode, which has GPU/WebGL like headed Chrome): a visible window steals
+    // focus on every local run.
+    headless: 'new',
     defaultViewport: {
       width: 1920,
       height: 1080,

@@ -283,12 +283,19 @@ function record<T = eventWithTime>(
       },
     });
 
-  const stylesheetManager = new StylesheetManager({
+  // Stylesheet events of a document that belongs to a blocked iframe are dropped: a `<link>` that finishes loading
+  // is judged by its own document, adopted style sheets by the document of their host node (`iframeManager` is
+  // created below; these only run once recording).
+  const stylesheetManager: StylesheetManager = new StylesheetManager({
     mutationCb: wrappedMutationEmit,
-    adoptedStyleSheetCb: wrappedAdoptedStyleSheetEmit,
+    adoptedStyleSheetCb: (a) => {
+      if (!iframeManager.isNodeDocBlocked(a.id))
+        wrappedAdoptedStyleSheetEmit(a);
+    },
+    isDocBlocked: (doc) => iframeManager.isDocBlocked(doc),
   });
 
-  const iframeManager = new IframeManager({
+  const iframeManager: IframeManager = new IframeManager({
     mirror,
     mutationCb: wrappedMutationEmit,
     stylesheetManager: stylesheetManager,
@@ -413,8 +420,9 @@ function record<T = eventWithTime>(
         }
       },
       onIframeLoad: (iframe, childSn) => {
-        iframeManager.attachIframe(iframe, childSn);
-        shadowDomManager.observeAttachShadow(iframe);
+        // a refused (blocked) iframe is not observed in any way
+        if (iframeManager.attachIframe(iframe, childSn))
+          shadowDomManager.observeAttachShadow(iframe);
       },
       onStylesheetLoad: (linkEl, childSn) => {
         stylesheetManager.attachLinkElement(linkEl, childSn);
