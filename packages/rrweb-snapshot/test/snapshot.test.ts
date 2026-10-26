@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { JSDOM } from 'jsdom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import snapshot, {
   _isBlockedElement,
@@ -504,5 +504,122 @@ describe('attribute-value masking', () => {
     }) as serializedElementNodeWithId;
     expect(sn.attributes.placeholder).toBe('************');
     expect(sn.attributes['aria-label']).toBe('*************');
+  });
+});
+
+describe('_isBlockedElement() fails closed', () => {
+  const el = () => JSDOM.fragment('<div class="x" />').querySelector('div')!;
+
+  it('treats an invalid blockSelector as blocked, not as visible', () => {
+    expect(_isBlockedElement(el(), 'rr-block', ':::bad(')).toBe(true);
+  });
+
+  it('does not let an invalid unblockSelector unblock the element', () => {
+    expect(
+      _isBlockedElement(
+        JSDOM.fragment('<div class="rr-block" />').querySelector('div')!,
+        'rr-block',
+        null,
+        ':::bad(',
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('blocked iframes are never entered', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  const serialize = (
+    iframe: HTMLIFrameElement,
+    onIframeLoad: (...args: unknown[]) => void,
+    opts: {
+      blockClass?: string;
+      blockSelector?: string | null;
+      unblockSelector?: string | null;
+    } = {},
+  ) =>
+    serializeNodeWithId(iframe, {
+      doc: document,
+      mirror: new Mirror(),
+      blockClass: opts.blockClass ?? 'rr-block',
+      blockSelector: opts.blockSelector ?? null,
+      unblockSelector: opts.unblockSelector ?? null,
+      maskTextClass: 'maskmask',
+      maskTextSelector: null,
+      skipChild: false,
+      inlineStylesheet: true,
+      maskTextFn: undefined,
+      maskInputFn: undefined,
+      slimDOMOptions: {},
+      onIframeLoad,
+      iframeLoadTimeout: 10,
+    } as unknown as Parameters<typeof serializeNodeWithId>[1]) as serializedElementNodeWithId;
+
+  const makeIframe = (className = '') => {
+    const iframe = document.createElement('iframe');
+    iframe.className = className;
+    document.body.appendChild(iframe);
+    iframe.contentDocument!.body.innerHTML = '<p>SECRET</p>';
+    return iframe;
+  };
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('serializes a blocked iframe as a placeholder and never reads its document', async () => {
+    const iframe = makeIframe('rr-block');
+    let loaded = 0;
+    const sn = serialize(iframe, () => loaded++);
+    iframe.dispatchEvent(new Event('load'));
+    await tick();
+    expect(sn.childNodes).toEqual([]);
+    expect(sn.attributes).toHaveProperty('rr_width');
+    expect(JSON.stringify(sn)).not.toContain('SECRET');
+    expect(loaded).toBe(0);
+  });
+
+  it('does not even start waiting for the load of a blocked iframe', () => {
+    const iframe = makeIframe('rr-block');
+    const listen = vi.spyOn(iframe, 'addEventListener');
+    serialize(iframe, () => undefined);
+    expect(listen).not.toHaveBeenCalled();
+  });
+
+  it('control: an iframe that is not blocked waits for its load', () => {
+    const iframe = makeIframe();
+    const listen = vi.spyOn(iframe, 'addEventListener');
+    serialize(iframe, () => undefined);
+    expect(listen).toHaveBeenCalledWith('load', expect.any(Function));
+  });
+
+  it('control: an iframe that is not blocked still reports its document', async () => {
+    const iframe = makeIframe();
+    const loaded: unknown[][] = [];
+    serialize(iframe, (...args) => loaded.push(args));
+    await tick();
+    expect(loaded.length).toBeGreaterThan(0);
+    expect(JSON.stringify(loaded)).toContain('SECRET');
+  });
+
+  it('honours unblockSelector: an iframe matching it is recorded although the selector blocks every iframe', async () => {
+    const iframe = makeIframe('allowed');
+    const loaded: unknown[][] = [];
+    serialize(iframe, (...args) => loaded.push(args), {
+      blockSelector: 'iframe',
+      unblockSelector: '.allowed',
+    });
+    await tick();
+    expect(JSON.stringify(loaded)).toContain('SECRET');
+  });
+
+  it('re-checks when the document is read: an iframe blocked after it was serialized is not entered', async () => {
+    const iframe = makeIframe();
+    let loaded = 0;
+    serialize(iframe, () => loaded++);
+    iframe.className = 'rr-block'; // becomes blocked before the load listener fires
+    iframe.dispatchEvent(new Event('load'));
+    await tick();
+    expect(loaded).toBe(0);
   });
 });

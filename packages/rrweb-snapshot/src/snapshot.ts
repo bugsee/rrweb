@@ -251,7 +251,8 @@ export function _isBlockedElement(
       return element.matches(blockSelector);
     }
   } catch (e) {
-    //
+    // Fail closed: a selector that throws (invalid syntax) must never turn into "not blocked".
+    return true;
   }
 
   return false;
@@ -1176,8 +1177,12 @@ export function serializeNodeWithId(
     onSerialize(n);
   }
   let recordChild = !skipChild;
+  // A blocked element is only a placeholder: for an iframe that includes its document, which is a child in
+  // every way that matters (it must never be serialized, attached or observed).
+  let isBlockedNode = false;
   if (serializedNode.type === NodeType.Element) {
-    recordChild = recordChild && !serializedNode.needBlock;
+    isBlockedNode = Boolean(serializedNode.needBlock);
+    recordChild = recordChild && !isBlockedNode;
     // this property was not needed in replay side
     delete serializedNode.needBlock;
     const shadowRootEl = dom.shadowRoot(n);
@@ -1271,11 +1276,24 @@ export function serializeNodeWithId(
 
   if (
     serializedNode.type === NodeType.Element &&
-    serializedNode.tagName === 'iframe'
+    serializedNode.tagName === 'iframe' &&
+    !isBlockedNode
   ) {
     onceIframeLoaded(
       n as HTMLIFrameElement,
       () => {
+        // The iframe may have become blocked since it was serialized (class/attribute change): re-check at the
+        // time the document is read, fail closed if the check itself throws.
+        if (
+          _isBlockedElement(
+            n as HTMLIFrameElement,
+            blockClass,
+            blockSelector,
+            unblockSelector,
+          )
+        ) {
+          return;
+        }
         const iframeDoc = (n as HTMLIFrameElement).contentDocument;
         if (iframeDoc && onIframeLoad) {
           const serializedIframeNode = serializeNodeWithId(iframeDoc, {
